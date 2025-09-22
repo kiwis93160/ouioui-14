@@ -1,5 +1,5 @@
 
-import { database, storage } from './firebaseConfig';
+import { database, storage, ensureFirebaseUser } from './firebaseConfig';
 import { ref, get, set, update, remove, push } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type {
@@ -26,9 +26,14 @@ const snapshotToObject = (snapshot: any) => {
         return { id: snapshot.key, ...snapshot.val() };
     }
     return null;
-}
+};
 
 const TAKEAWAY_TABLE_ID: EntityId = '99';
+
+const withDatabaseAuth = async <T>(operation: () => Promise<T>): Promise<T> => {
+    await ensureFirebaseUser();
+    return operation();
+};
 
 const parseNumericValue = (value: unknown): number => {
     if (typeof value === 'number') {
@@ -152,19 +157,19 @@ const normalizeCommandesArray = (commandesData: any[]): Commande[] =>
         .map(normalizeCommandeRecord)
         .filter((commande): commande is Commande => commande !== null);
 
-const fetchAllCommandes = async (): Promise<Commande[]> => {
+const fetchAllCommandes = async (): Promise<Commande[]> => withDatabaseAuth(async () => {
     const snapshot = await get(ref(database, 'commands'));
     const rawCommandes = snapshotToArray(snapshot);
     return normalizeCommandesArray(rawCommandes);
-};
+});
 
-const uploadFileAndGetURL = async (path: string, file: File): Promise<string> => {
+const uploadFileAndGetURL = async (path: string, file: File): Promise<string> => withDatabaseAuth(async () => {
     const fileRef = storageRef(storage, path);
     await uploadBytes(fileRef, file);
     return getDownloadURL(fileRef);
-};
+});
 
-const safeDeleteStorageObject = async (path: string): Promise<void> => {
+const safeDeleteStorageObject = async (path: string): Promise<void> => withDatabaseAuth(async () => {
     try {
         await deleteObject(storageRef(storage, path));
     } catch (error) {
@@ -173,13 +178,17 @@ const safeDeleteStorageObject = async (path: string): Promise<void> => {
             throw error;
         }
     }
-};
+});
 
 export const api = {
     // --- Core Data Getters ---
-    getIngredients: async (): Promise<Ingredient[]> => snapshotToArray(await get(ref(database, 'ingredients'))),
-    getProduits: async (): Promise<Produit[]> => snapshotToArray(await get(ref(database, 'products'))),
-    getRecettes: async (): Promise<Recette[]> => {
+    getIngredients: async (): Promise<Ingredient[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'ingredients')))
+    ),
+    getProduits: async (): Promise<Produit[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'products')))
+    ),
+    getRecettes: async (): Promise<Recette[]> => withDatabaseAuth(async () => {
         const recettesRef = ref(database, 'recettes');
         const snapshot = await get(recettesRef);
         if (!snapshot.exists()) {
@@ -225,16 +234,28 @@ export const api = {
         }
 
         return recettes;
-    },
-    getVentes: async (): Promise<Vente[]> => snapshotToArray(await get(ref(database, 'sales'))),
-    getAchats: async (): Promise<Achat[]> => snapshotToArray(await get(ref(database, 'purchases'))),
-    getCategories: async (): Promise<Categoria[]> => snapshotToArray(await get(ref(database, 'categories'))),
-    getTables: async (): Promise<Table[]> => snapshotToArray(await get(ref(database, 'tables'))),
-    getSiteAssets: async (): Promise<any> => (await get(ref(database, 'site_configuration'))).val(),
-    getTimeEntries: async (): Promise<TimeEntry[]> => snapshotToArray(await get(ref(database, 'time_entries'))),
+    }),
+    getVentes: async (): Promise<Vente[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'sales')))
+    ),
+    getAchats: async (): Promise<Achat[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'purchases')))
+    ),
+    getCategories: async (): Promise<Categoria[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'categories')))
+    ),
+    getTables: async (): Promise<Table[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'tables')))
+    ),
+    getSiteAssets: async (): Promise<any> => withDatabaseAuth(async () =>
+        (await get(ref(database, 'site_configuration'))).val()
+    ),
+    getTimeEntries: async (): Promise<TimeEntry[]> => withDatabaseAuth(async () =>
+        snapshotToArray(await get(ref(database, 'time_entries')))
+    ),
 
     // --- Site Editor ---
-    updateSiteAsset: async (assetKey: string, data: File | string): Promise<void> => {
+    updateSiteAsset: async (assetKey: string, data: File | string): Promise<void> => withDatabaseAuth(async () => {
         if (typeof data === 'string') {
             await update(ref(database, 'site_configuration'), { [assetKey]: data });
         } else {
@@ -243,35 +264,36 @@ export const api = {
             const url = await getDownloadURL(fileRef);
             await update(ref(database, 'site_configuration'), { [assetKey]: url });
         }
-    },
+    }),
 
     // --- Auth & Roles ---
-    getRoles: async (): Promise<Role[]> => snapshotToArray(await get(ref(database, 'roles'))),
-    saveRoles: (newRoles: Role[]): Promise<void> => set(ref(database, 'roles'), newRoles), // Assumes newRoles is the full list
-    loginWithPin: async (pin: string): Promise<Role | null> => {
-        const rolesSnapshot = await get(ref(database, 'roles'));
-        if (!rolesSnapshot.exists()) return null;
-        const roles = rolesSnapshot.val();
-        for (const roleId in roles) {
-            if (roles[roleId].pin === pin) {
-                return { id: roleId, ...roles[roleId] };
+    getRoles: async (): Promise<Role[]> => withDatabaseAuth(async () => {
+        try {
+            return snapshotToArray(await get(ref(database, 'roles')));
+        } catch (error) {
+            const code = (error as { code?: string }).code;
+            if (code === 'PERMISSION_DENIED') {
+                return [];
             }
+            throw error;
         }
-        return null;
-    },
+    }),
+    saveRoles: (newRoles: Role[]): Promise<void> => withDatabaseAuth(async () =>
+        set(ref(database, 'roles'), newRoles)
+    ), // Assumes newRoles is the full list
 
     // --- POS - Commande ---
-    getCommandeByTableId: async (tableId: EntityId): Promise<Commande | null> => {
+    getCommandeByTableId: async (tableId: EntityId): Promise<Commande | null> => withDatabaseAuth(async () => {
         const tablesSnapshot = await get(ref(database, `tables/${tableId}`));
         const table = tablesSnapshot.val();
         if (!table || !table.commandeId) return null;
         return api.getCommandeById(table.commandeId);
-    },
-    getCommandeById: async (commandeId: string): Promise<Commande | null> => {
+    }),
+    getCommandeById: async (commandeId: string): Promise<Commande | null> => withDatabaseAuth(async () => {
         const snapshot = await get(ref(database, `commands/${commandeId}`));
         return normalizeCommandeRecord(snapshotToObject(snapshot));
-    },
-    createCommande: async (tableId: EntityId, couverts: number): Promise<Commande> => {
+    }),
+    createCommande: async (tableId: EntityId, couverts: number): Promise<Commande> => withDatabaseAuth(async () => {
         const newCommandeRef = push(ref(database, 'commands'));
         const normalizedTableId = String(tableId);
         const newCommande: Commande = {
@@ -287,62 +309,70 @@ export const api = {
         await set(newCommandeRef, newCommande);
         await update(ref(database, `tables/${normalizedTableId}`), { commandeId: newCommande.id, statut: 'occupee' });
         return newCommande;
-    },
-    updateCommande: async (commandeId: string, updates: Partial<Commande>): Promise<Commande> => {
+    }),
+    updateCommande: async (commandeId: string, updates: Partial<Commande>): Promise<Commande> => withDatabaseAuth(async () => {
         const commandeRef = ref(database, `commands/${commandeId}`);
         await update(commandeRef, updates);
         return snapshotToObject(await get(commandeRef));
-    },
-    finaliserCommande: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { statut: 'finalisee' }),
-    markCommandeAsPaid: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { payment_status: 'paye' }),
-    cancelUnpaidCommande: async (commandeId: string): Promise<void> => {
+    }),
+    finaliserCommande: (commandeId: string): Promise<void> => withDatabaseAuth(async () =>
+        update(ref(database, `commands/${commandeId}`), { statut: 'finalisee' })
+    ),
+    markCommandeAsPaid: (commandeId: string): Promise<void> => withDatabaseAuth(async () =>
+        update(ref(database, `commands/${commandeId}`), { payment_status: 'paye' })
+    ),
+    cancelUnpaidCommande: async (commandeId: string): Promise<void> => withDatabaseAuth(async () => {
         const commande = await api.getCommandeById(commandeId);
         if (!commande) return;
         await update(ref(database, `tables/${commande.table_id}`), { statut: 'libre', commandeId: null });
         await remove(ref(database, `commands/${commandeId}`));
-    },
+    }),
     cancelEmptyCommande: (commandeId: string): Promise<void> => api.cancelUnpaidCommande(commandeId), // Same logic for now
 
     // --- POS - Kitchen ---
-    sendOrderToKitchen: async (commandeId: string): Promise<Commande> => {
+    sendOrderToKitchen: async (commandeId: string): Promise<Commande> => withDatabaseAuth(async () => {
         const updates = {
             estado_cocina: 'recibido',
             date_envoi_cuisine: new Date().toISOString(),
         };
         await update(ref(database, `commands/${commandeId}`), updates);
         return api.getCommandeById(commandeId);
-    },
-    getKitchenOrders: async (): Promise<Commande[]> => {
+    }),
+    getKitchenOrders: async (): Promise<Commande[]> => withDatabaseAuth(async () => {
         const allCommands = await fetchAllCommandes();
         return allCommands.filter(c => c.estado_cocina && c.estado_cocina !== 'servido');
-    },
-    markOrderAsReady: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { estado_cocina: 'listo', date_listo_cuisine: new Date().toISOString() }),
-    acknowledgeOrderReady: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { estado_cocina: 'servido', date_servido: new Date().toISOString() }),
+    }),
+    markOrderAsReady: (commandeId: string): Promise<void> => withDatabaseAuth(async () =>
+        update(ref(database, `commands/${commandeId}`), { estado_cocina: 'listo', date_listo_cuisine: new Date().toISOString() })
+    ),
+    acknowledgeOrderReady: (commandeId: string): Promise<void> => withDatabaseAuth(async () =>
+        update(ref(database, `commands/${commandeId}`), { estado_cocina: 'servido', date_servido: new Date().toISOString() })
+    ),
 
     // --- POS - Takeaway ---
-    getReadyTakeawayOrders: async (): Promise<Commande[]> => {
+    getReadyTakeawayOrders: async (): Promise<Commande[]> => withDatabaseAuth(async () => {
         const commandes = await fetchAllCommandes();
         return commandes.filter(cmd =>
             cmd.table_id === TAKEAWAY_TABLE_ID &&
             cmd.statut === 'en_cours' &&
             cmd.estado_cocina === 'listo'
         );
-    },
-    getPendingTakeawayOrders: async (): Promise<Commande[]> => {
+    }),
+    getPendingTakeawayOrders: async (): Promise<Commande[]> => withDatabaseAuth(async () => {
         const commandes = await fetchAllCommandes();
         return commandes.filter(cmd =>
             cmd.table_id === TAKEAWAY_TABLE_ID &&
             cmd.statut === 'pendiente_validacion'
         );
-    },
-    getActiveCommandes: async (): Promise<Commande[]> => {
+    }),
+    getActiveCommandes: async (): Promise<Commande[]> => withDatabaseAuth(async () => {
         const commandes = await fetchAllCommandes();
         return commandes.filter(cmd => cmd.statut === 'en_cours' || cmd.statut === 'pendiente_validacion');
-    },
+    }),
     submitTakeawayOrderForValidation: async (
         items: CommandeItem[],
         customerInfo: { fullName: string, address: string, paymentMethod: string, receipt: File }
-    ): Promise<Commande> => {
+    ): Promise<Commande> => withDatabaseAuth(async () => {
         const newCommandeRef = push(ref(database, 'commands'));
         const commandeId = newCommandeRef.key;
         if (!commandeId) {
@@ -380,8 +410,8 @@ export const api = {
         await set(newCommandeRef, newCommandeData);
 
         return normalizeCommandeRecord(newCommandeData)!;
-    },
-    validateAndSendTakeawayOrder: async (commandeId: string): Promise<void> => {
+    }),
+    validateAndSendTakeawayOrder: async (commandeId: string): Promise<void> => withDatabaseAuth(async () => {
         const nowIso = new Date().toISOString();
         await update(ref(database, `commands/${commandeId}`), {
             statut: 'en_cours',
@@ -389,15 +419,16 @@ export const api = {
             date_envoi_cuisine: nowIso,
             date_dernier_envoi_cuisine: nowIso,
         });
-    },
+    }),
 
     // --- Management - Ingredients ---
-    recordAchat: (ingredient_id: EntityId, quantite_achetee: number, prix_total: number): Promise<Achat> => {
+    recordAchat: (ingredient_id: EntityId, quantite_achetee: number, prix_total: number): Promise<Achat> => withDatabaseAuth(async () => {
         const newAchatRef = push(ref(database, 'purchases'));
         const achatData = { ingredient_id, quantite_achetee, prix_total, date_achat: new Date().toISOString() };
-        return set(newAchatRef, achatData).then(() => ({ id: newAchatRef.key!, ...achatData }));
-    },
-    addIngredient: async (payload: IngredientPayload): Promise<Ingredient> => {
+        await set(newAchatRef, achatData);
+        return { id: newAchatRef.key!, ...achatData };
+    }),
+    addIngredient: async (payload: IngredientPayload): Promise<Ingredient> => withDatabaseAuth(async () => {
         const newIngredientRef = push(ref(database, 'ingredients'));
         if (!newIngredientRef.key) {
             throw new Error('Impossible de créer l\'ingrédient.');
@@ -431,22 +462,27 @@ export const api = {
         await set(newIngredientRef, ingredientRecord);
 
         return { id: newIngredientRef.key!, ...ingredientRecord };
-    },
-    updateIngredient: (id: EntityId, payload: IngredientPayload): Promise<Ingredient> => {
-        return update(ref(database, `ingredients/${id}`), payload).then(() => api.getIngredients().then(ings => ings.find(i => i.id === id)!));
-    },
-    deleteIngredient: (id: EntityId): Promise<void> => remove(ref(database, `ingredients/${id}`)),
+    }),
+    updateIngredient: (id: EntityId, payload: IngredientPayload): Promise<Ingredient> => withDatabaseAuth(async () => {
+        await update(ref(database, `ingredients/${id}`), payload);
+        const ingredients = await api.getIngredients();
+        return ingredients.find(i => i.id === id)!;
+    }),
+    deleteIngredient: (id: EntityId): Promise<void> => withDatabaseAuth(async () => {
+        await remove(ref(database, `ingredients/${id}`));
+    }),
 
     // --- Management - Products ---
-    updateRecette: (produit_id: EntityId, newItems: RecetteItem[]): Promise<Recette> => {
+    updateRecette: (produit_id: EntityId, newItems: RecetteItem[]): Promise<Recette> => withDatabaseAuth(async () => {
         const sanitizedItems = newItems.map(item => ({
             ingredient_id: String(item.ingredient_id),
             qte_utilisee: item.qte_utilisee,
         }));
         const recetteData: Recette = { produit_id, items: sanitizedItems };
-        return set(ref(database, `recettes/${produit_id}`), recetteData).then(() => recetteData);
-    },
-    addProduct: async (payload: ProduitPayload, items: RecetteItem[], imageFile?: File): Promise<Produit> => {
+        await set(ref(database, `recettes/${produit_id}`), recetteData);
+        return recetteData;
+    }),
+    addProduct: async (payload: ProduitPayload, items: RecetteItem[], imageFile?: File): Promise<Produit> => withDatabaseAuth(async () => {
         const newProductRef = push(ref(database, 'products'));
         const productData = { ...payload, estado: 'disponible' };
         await set(newProductRef, productData);
@@ -457,11 +493,13 @@ export const api = {
             await update(newProductRef, { image_base64: imageUrl });
         }
         return { id: newProductRef.key!, ...productData, ...(imageUrl ? { image_base64: imageUrl } : {}) };
-    },
-    updateProduct: (id: EntityId, payload: ProduitPayload): Promise<Produit> => {
-        return update(ref(database, `products/${id}`), payload).then(() => api.getProduits().then(prods => prods.find(p => p.id === id)!));
-    },
-    updateProductImage: async (productId: EntityId, imageFile: File | null): Promise<void> => {
+    }),
+    updateProduct: (id: EntityId, payload: ProduitPayload): Promise<Produit> => withDatabaseAuth(async () => {
+        await update(ref(database, `products/${id}`), payload);
+        const produits = await api.getProduits();
+        return produits.find(p => p.id === id)!;
+    }),
+    updateProductImage: async (productId: EntityId, imageFile: File | null): Promise<void> => withDatabaseAuth(async () => {
         const productRef = ref(database, `products/${productId}`);
         if (imageFile) {
             const imageUrl = await uploadFileAndGetURL(`product_images/${productId}`, imageFile);
@@ -470,24 +508,35 @@ export const api = {
             await update(productRef, { image_base64: null });
             await safeDeleteStorageObject(`product_images/${productId}`);
         }
-    },
-    updateProductStatus: (productId: EntityId, status: Produit['estado']): Promise<Produit> => {
-        return update(ref(database, `products/${productId}`), { estado: status }).then(() => api.getProduits().then(prods => prods.find(p => p.id === productId)!));
-    },
-    deleteProduct: async (id: EntityId): Promise<void> => {
+    }),
+    updateProductStatus: (productId: EntityId, status: Produit['estado']): Promise<Produit> => withDatabaseAuth(async () => {
+        await update(ref(database, `products/${productId}`), { estado: status });
+        const produits = await api.getProduits();
+        return produits.find(p => p.id === productId)!;
+    }),
+    deleteProduct: async (id: EntityId): Promise<void> => withDatabaseAuth(async () => {
         await remove(ref(database, `products/${id}`));
         await remove(ref(database, `recettes/${id}`));
-    },
+    }),
 
     // --- Management - Categories ---
-    addCategory: (nom: string): Promise<Categoria> => {
+    addCategory: (nom: string): Promise<Categoria> => withDatabaseAuth(async () => {
         const newCatRef = push(ref(database, 'categories'));
-        return set(newCatRef, { nom }).then(() => ({ id: newCatRef.key!, nom }));
-    },
-    deleteCategory: (id: EntityId): Promise<void> => remove(ref(database, `categories/${id}`)),
+        await set(newCatRef, { nom });
+        return { id: newCatRef.key!, nom };
+    }),
+    deleteCategory: (id: EntityId): Promise<void> => withDatabaseAuth(async () => {
+        await remove(ref(database, `categories/${id}`));
+    }),
 
     // --- Management - Tables ---
-    addTable: (data: TablePayload): Promise<void> => set(ref(database, `tables/${data.id}`), data),
-    updateTable: (id: EntityId, data: Omit<TablePayload, 'id'>): Promise<void> => update(ref(database, `tables/${id}`), data),
-    deleteTable: (id: EntityId): Promise<void> => remove(ref(database, `tables/${id}`)),
+    addTable: (data: TablePayload): Promise<void> => withDatabaseAuth(async () => {
+        await set(ref(database, `tables/${data.id}`), data);
+    }),
+    updateTable: (id: EntityId, data: Omit<TablePayload, 'id'>): Promise<void> => withDatabaseAuth(async () => {
+        await update(ref(database, `tables/${id}`), data);
+    }),
+    deleteTable: (id: EntityId): Promise<void> => withDatabaseAuth(async () => {
+        await remove(ref(database, `tables/${id}`));
+    }),
 };

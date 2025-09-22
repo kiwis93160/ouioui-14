@@ -67,8 +67,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, closeSidebar }) => {
     
     const handleLogout = () => {
         closeSidebar();
-        logout();
-        navigate('/login');
+        void logout()
+            .catch(error => console.error('Erreur lors de la déconnexion', error))
+            .finally(() => navigate('/login'));
     };
 
     const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, notifications = [] }) => {

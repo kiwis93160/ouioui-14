@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import { api } from '../services/apiService';
+import { loginWithPin as performPinLogin, logoutFromFirebase } from '../services/authService';
 import type { Ingredient, Produit, Recette, Vente, Achat, RecetteItem, IngredientPayload, ProduitPayload, Table, Commande, CommandeItem, Categoria, UserRole, Role, TablePayload, DailyReportData, TimeEntry, EntityId } from '../types';
 import { defaultImageAssets } from '../components/ImageAssets';
 
@@ -26,7 +27,7 @@ interface DataContextType {
     currentUserRole: Role | null;
     roles: Role[];
     login: (pin: string) => Promise<Role | null>;
-    logout: () => void;
+    logout: () => Promise<void>;
     saveRoles: (newRoles: Role[]) => Promise<void>;
     authenticateAdmin: (pin: string) => Promise<boolean>;
 
@@ -229,31 +230,37 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [fetchData]);
     
     const login = useCallback(async (pin: string): Promise<Role | null> => {
-        const role = await api.loginWithPin(pin);
-        if (role) {
+        try {
+            const role = await performPinLogin(pin);
+            if (!role) {
+                return null;
+            }
             try {
                 sessionStorage.setItem('userRoleId', role.id);
-                setUserRole(role.id);
-                setCurrentUserRole(role);
-                return role;
-            } catch(e) {
+            } catch (e) {
                 console.error("Impossible d'écrire dans la session de stockage", e);
-                setUserRole(role.id);
-                setCurrentUserRole(role);
-                return role;
             }
+            setUserRole(role.id);
+            setCurrentUserRole(role);
+            return role;
+        } catch (error) {
+            console.error("Erreur lors de l'authentification Firebase", error);
+            throw error;
         }
-        return null;
     }, []);
 
-    const logout = useCallback(() => {
+    const logout = useCallback(async () => {
         try {
-            sessionStorage.removeItem('userRoleId');
-        } catch(e) {
-            console.error("Impossible de supprimer de la session de stockage", e);
+            await logoutFromFirebase();
+        } finally {
+            try {
+                sessionStorage.removeItem('userRoleId');
+            } catch (e) {
+                console.error("Impossible de supprimer de la session de stockage", e);
+            }
+            setUserRole(null);
+            setCurrentUserRole(null);
         }
-        setUserRole(null);
-        setCurrentUserRole(null);
     }, []);
 
     const saveRoles = useCallback((newRoles: Role[]) => handleApiCall(() => api.saveRoles(newRoles)), [handleApiCall]);
