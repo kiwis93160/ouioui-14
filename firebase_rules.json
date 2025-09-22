@@ -11,8 +11,8 @@
       ".write": "auth != null && auth.token.roleId === 'admin'"
     },
     "tables": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.orders == 'editor' || auth.token.permissions.orders == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.orders == 'editor'"
     },
     "products": {
       ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.products == 'editor' || auth.token.permissions.products == 'readonly')",
@@ -27,8 +27,8 @@
       ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.ingredients == 'editor'"
     },
     "commands": {
-      ".read": "auth != null",
-      ".write": "auth != null"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.orders == 'editor' || auth.token.permissions.orders == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.orders == 'editor'"
     },
     "sales": {
       ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.reports == 'editor' || auth.token.permissions.reports == 'readonly')",
