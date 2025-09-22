@@ -89,7 +89,7 @@ const TakeawayTicket: React.FC<{ commande: Commande, onFinalize: (id: string) =>
                             )}
                             {item.commentaire && (
                                 <div className="pl-6 text-sm text-yellow-800 italic">
-                                   "{item.commentaire}"
+                                    {item.commentaire}
                                 </div>
                             )}
                         </div>
@@ -160,7 +160,7 @@ const PendingTicket: React.FC<{ commande: Commande, onValidate: (id: string) => 
                         )}
                         {item.commentaire && (
                             <div className="pl-5 text-xs text-yellow-800 italic">
-                               "{item.commentaire}"
+                                {item.commentaire}
                             </div>
                         )}
                     </div>
