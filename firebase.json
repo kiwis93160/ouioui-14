@@ -1,0 +1,36 @@
+{
+  "database": {
+    "rules": "firebase_rules.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "emulators": {
+    "hub": {
+        "host": "0.0.0.0",
+        "port": 4401
+    },
+    "auth": {
+      "host": "0.0.0.0",
+      "port": 9100
+    },
+    "database": {
+      "host": "0.0.0.0",
+      "port": 9002
+    },
+    "storage": {
+      "host": "0.0.0.0",
+      "port": 9200
+    },
+    "ui": {
+      "enabled": true,
+      "host": "0.0.0.0",
+      "port": 4002
+    },
+    "logging": {
+        "host": "0.0.0.0",
+        "port": 4502
+    },
+    "singleProjectMode": true
+  }
+}

@@ -1,0 +1,57 @@
+
+{
+  "rules": {
+    "users": {
+      ".read": "auth != null",
+      ".write": "auth != null", // Allows users to sign up
+      "$uid": {
+        ".read": "$uid === auth.uid",
+        ".write": "$uid === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin'" // Users can edit their own data, or an admin can
+      }
+    },
+    "roles": {
+      // Only admins can read or write roles
+      ".read": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+    },
+    "tables": {
+      ".read": "auth != null",
+      ".write": "auth != null" // Any authenticated user (e.g. waiter) can manage tables
+    },
+    "products": {
+      ".read": "auth != null",
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('products').val() === 'editor'"
+    },
+    "categories": {
+      ".read": "auth != null",
+       // Tied to product permissions
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('products').val() === 'editor'"
+    },
+    "ingredients": {
+      ".read": "auth != null",
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('ingredients').val() === 'editor'"
+    },
+    "commands": {
+      ".read": "auth != null",
+      ".write": "auth != null" // Any authenticated user (e.g. waiter) can manage commands
+    },
+    "sales": {
+      ".read": "auth != null",
+       // Tied to reports permissions
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('reports').val() === 'editor'"
+    },
+    "purchases": {
+      ".read": "auth != null",
+      // Tied to ingredients permissions
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('ingredients').val() === 'editor'"
+    },
+    "site_configuration": {
+      ".read": true,
+      ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'" // Only admins can change site config
+    },
+    "daily_reports": {
+      ".read": "auth != null",
+      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('reports').val() === 'editor'"
+    }
+  }
+}

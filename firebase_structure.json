@@ -1,0 +1,101 @@
+
+{
+  "users": {
+    "user_id_1": {
+      "email": "user1@example.com",
+      "role": "admin"
+    },
+    "user_id_2": {
+      "email": "user2@example.com",
+      "role": "kitchen"
+    }
+  },
+  "roles": {
+    "admin": {
+      "name": "Administrador",
+      "pin": "1234",
+      "permissions": {
+        "dashboard": "editor",
+        "products": "editor",
+        "ingredients": "editor",
+        "reports": "editor"
+      }
+    },
+    "kitchen": {
+      "name": "Cocina",
+      "pin": "5678",
+      "permissions": {
+        "kitchen": "editor"
+      }
+    }
+  },
+  "tables": {
+    "table_id_1": {
+      "nom": "Table 1",
+      "capacite": 4,
+      "statut": "libre"
+    }
+  },
+  "products": {
+    "product_id_1": {
+      "nom_produit": "Pizza Margherita",
+      "prix_vente": 12.5,
+      "categoria_id": 1,
+      "estado": "disponible"
+    }
+  },
+  "categories": {
+    "category_id_1": {
+      "nom": "Pizzas"
+    }
+  },
+  "ingredients": {
+    "ingredient_id_1": {
+      "nom": "Tomate",
+      "unite": "kg",
+      "stock_minimum": 5,
+      "stock_actuel": 10,
+      "prix_unitaire": 2.5
+    }
+  },
+  "commands": {
+    "command_id_1": {
+      "table_id": "table_id_1",
+      "items": [
+        {
+          "produit_id": "product_id_1",
+          "quantite": 2
+        }
+      ],
+      "statut": "en_cours",
+      "date_creation": "2024-05-16T10:00:00Z"
+    }
+  },
+  "sales": {
+    "sale_id_1": {
+      "commande_id": "command_id_1",
+      "produit_id": "product_id_1",
+      "quantite": 2,
+      "date_vente": "2024-05-16T10:30:00Z",
+      "prix_total_vente": 25
+    }
+  },
+  "purchases": {
+    "purchase_id_1": {
+      "ingredient_id": "ingredient_id_1",
+      "quantite_achetee": 10,
+      "prix_total": 25,
+      "date_achat": "2024-05-15T09:00:00Z"
+    }
+  },
+  "site_configuration": {
+    "restaurant_name": "My Restaurant",
+    "theme": "dark"
+  },
+  "daily_reports": {
+    "2024-05-16": {
+      "totalSales": 1500,
+      "customerCount": 50
+    }
+  }
+}
