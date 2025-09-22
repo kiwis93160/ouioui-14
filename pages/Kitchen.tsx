@@ -81,7 +81,7 @@ const Ticket: React.FC<{ commande: Commande, tables: any[], onReady: (id: string
                         )}
                         {item.commentaire && (
                             <div className="pl-6 text-sm text-yellow-800 italic">
-                               "{item.commentaire}"
+                                {item.commentaire}
                             </div>
                         )}
                     </div>

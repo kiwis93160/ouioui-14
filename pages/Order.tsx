@@ -438,7 +438,7 @@ const Order: React.FC = () => {
                                                     </p>
                                                 )}
                                                 {item.commentaire && (
-                                                    <p className="text-yellow-800 dark:text-yellow-300 italic">"{item.commentaire}"</p>
+                                                    <p className="text-yellow-800 dark:text-yellow-300 italic">{item.commentaire}</p>
                                                 )}
                                             </div>
                                         )}
