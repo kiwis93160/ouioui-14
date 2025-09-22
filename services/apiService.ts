@@ -42,7 +42,7 @@ class AccessDeniedError extends Error {
     }
 }
 
-const ACCESS_DENIED_MESSAGE = 'Accès refusé. Veuillez vous reconnecter pour continuer.';
+const ACCESS_DENIED_MESSAGE = 'Accès refusé. Un rôle autorisé est requis pour continuer.';
 let accessDeniedAlertShown = false;
 
 const getStoredRoleId = (): string | null => {
@@ -92,7 +92,12 @@ const isPermissionDeniedError = (error: unknown): boolean => {
     const codeCandidate = (error as { code?: unknown }).code;
     if (typeof codeCandidate === 'string') {
         const normalizedCode = codeCandidate.toLowerCase();
-        if (normalizedCode.includes('permission_denied') || normalizedCode.includes('permission-denied')) {
+        if (
+            normalizedCode.includes('permission_denied') ||
+            normalizedCode.includes('permission-denied') ||
+            normalizedCode.includes('unauthorized') ||
+            normalizedCode.includes('permission') && normalizedCode.includes('denied')
+        ) {
             return true;
         }
     }
@@ -100,7 +105,12 @@ const isPermissionDeniedError = (error: unknown): boolean => {
     const messageCandidate = (error as { message?: unknown }).message;
     if (typeof messageCandidate === 'string') {
         const normalizedMessage = messageCandidate.toLowerCase();
-        if (normalizedMessage.includes('permission denied') || normalizedMessage.includes('permission_denied')) {
+        if (
+            normalizedMessage.includes('permission denied') ||
+            normalizedMessage.includes('permission_denied') ||
+            normalizedMessage.includes('unauthorized') ||
+            normalizedMessage.includes('access denied')
+        ) {
             return true;
         }
     }
@@ -118,7 +128,7 @@ const withDatabaseAuth = async <T>(
         const storedRoleId = getStoredRoleId();
         if (!storedRoleId) {
             notifyAccessDenied();
-            throw new AccessDeniedError('missing-role');
+            throw new AccessDeniedError('authorized-role-required');
         }
 
         if (ensureAuth) {
@@ -128,7 +138,7 @@ const withDatabaseAuth = async <T>(
         const currentUser = auth.currentUser;
         if (!currentUser || currentUser.isAnonymous) {
             notifyAccessDenied();
-            throw new AccessDeniedError('missing-firebase-user');
+            throw new AccessDeniedError('authorized-role-required');
         }
     } else if (ensureAuth) {
         await ensureFirebaseUser();
@@ -139,7 +149,7 @@ const withDatabaseAuth = async <T>(
     } catch (error) {
         if (requireRole && isPermissionDeniedError(error)) {
             notifyAccessDenied();
-            throw new AccessDeniedError((error as Error).message);
+            throw new AccessDeniedError('authorized-role-required');
         }
         throw error;
     }
@@ -206,6 +216,42 @@ const normalizeRecetteItems = (rawItems: unknown): RecetteItem[] => {
             };
         })
         .filter((item): item is RecetteItem => item !== null);
+};
+
+const normalizeSiteAssets = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== 'object') {
+        return {};
+    }
+
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) {
+        return {};
+    }
+
+    return entries.reduce<Record<string, unknown>>((acc, [key, rawValue]) => {
+        if (typeof key === 'string') {
+            acc[key] = rawValue;
+        }
+        return acc;
+    }, {});
+};
+
+// Site assets intended for public rendering are replicated under `public_menu/site_assets`
+// with signed download URLs. Back-office users continue to edit the canonical
+// `site_configuration` node, but reads prefer the replicated surface to avoid
+// requiring privileged Storage access.
+const fetchSiteAssets = async (): Promise<Record<string, unknown>> => {
+    const publicAssetsSnapshot = await get(ref(database, 'public_menu/site_assets'));
+    if (publicAssetsSnapshot.exists()) {
+        return normalizeSiteAssets(publicAssetsSnapshot.val());
+    }
+
+    const privateSnapshot = await get(ref(database, 'site_configuration'));
+    if (privateSnapshot.exists()) {
+        return normalizeSiteAssets(privateSnapshot.val());
+    }
+
+    return {};
 };
 
 const resolveRecetteProduitId = (nodeKey: string, rawRecette: unknown): EntityId => {
@@ -476,7 +522,7 @@ export const api = {
         snapshotToArray(await get(ref(database, 'tables')))
     ),
     getSiteAssets: async (): Promise<any> => withDatabaseAuth(
-        async () => (await get(ref(database, 'site_configuration'))).val(),
+        fetchSiteAssets,
         { requireRole: false, ensureAuth: false },
     ),
     getPublicMenuData: async (): Promise<{
