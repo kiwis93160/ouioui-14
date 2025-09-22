@@ -1,11 +1,11 @@
 
 import { database, storage } from './firebaseConfig';
-import { ref, get, set, update, remove, push, child } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, get, set, update, remove, push } from 'firebase/database';
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type { 
-    Ingredient, Produit, Recette, Vente, Achat, RecetteItem, 
-    IngredientPayload, ProduitPayload, Table, Commande, CommandeItem, 
-    Categoria, Role, TablePayload 
+    Ingredient, Produit, Recette, Vente, Achat, RecetteItem,
+    IngredientPayload, ProduitPayload, Table, Commande, CommandeItem,
+    Categoria, Role, TablePayload, TimeEntry
 } from '../types';
 
 // --- Helper Functions for Firebase Database ---
@@ -28,6 +28,86 @@ const snapshotToObject = (snapshot: any) => {
     return null;
 }
 
+const TAKEAWAY_TABLE_ID = 99;
+
+const parseNumericValue = (value: unknown): number => {
+    if (typeof value === 'number') {
+        return value;
+    }
+    if (typeof value === 'string' && value.trim() !== '') {
+        const parsed = Number(value);
+        if (!Number.isNaN(parsed)) {
+            return parsed;
+        }
+    }
+    return Number.NaN;
+};
+
+const normalizeCommandeRecord = (commandeData: any | null): Commande | null => {
+    if (!commandeData) return null;
+
+    const rawItems = Array.isArray(commandeData.items)
+        ? commandeData.items
+        : commandeData.items
+            ? Object.values(commandeData.items)
+            : [];
+
+    const normalizedItems = (rawItems.filter(Boolean) as CommandeItem[]).map(item => {
+        if (item?.produit?.id !== undefined) {
+            const parsedId = parseNumericValue(item.produit.id as unknown);
+            if (!Number.isNaN(parsedId)) {
+                return {
+                    ...item,
+                    produit: { ...item.produit, id: parsedId }
+                };
+            }
+        }
+        return item;
+    });
+
+    const tableId = parseNumericValue(commandeData.table_id);
+    const couvertsCandidate = parseNumericValue(commandeData.couverts);
+
+    const normalizedCommande: Commande = {
+        ...commandeData,
+        table_id: Number.isNaN(tableId) ? Number.NaN : tableId,
+        couverts: Number.isNaN(couvertsCandidate)
+            ? normalizedItems.reduce((sum, item) => sum + (item.quantite || 0), 0)
+            : couvertsCandidate,
+        items: normalizedItems,
+    };
+
+    return normalizedCommande;
+};
+
+const normalizeCommandesArray = (commandesData: any[]): Commande[] =>
+    commandesData
+        .map(normalizeCommandeRecord)
+        .filter((commande): commande is Commande => commande !== null);
+
+const fetchAllCommandes = async (): Promise<Commande[]> => {
+    const snapshot = await get(ref(database, 'commands'));
+    const rawCommandes = snapshotToArray(snapshot);
+    return normalizeCommandesArray(rawCommandes);
+};
+
+const uploadFileAndGetURL = async (path: string, file: File): Promise<string> => {
+    const fileRef = storageRef(storage, path);
+    await uploadBytes(fileRef, file);
+    return getDownloadURL(fileRef);
+};
+
+const safeDeleteStorageObject = async (path: string): Promise<void> => {
+    try {
+        await deleteObject(storageRef(storage, path));
+    } catch (error) {
+        const code = (error as { code?: string }).code;
+        if (code !== 'storage/object-not-found') {
+            throw error;
+        }
+    }
+};
+
 export const api = {
     // --- Core Data Getters ---
     getIngredients: async (): Promise<Ingredient[]> => snapshotToArray(await get(ref(database, 'ingredients'))),
@@ -38,6 +118,7 @@ export const api = {
     getCategories: async (): Promise<Categoria[]> => snapshotToArray(await get(ref(database, 'categories'))),
     getTables: async (): Promise<Table[]> => snapshotToArray(await get(ref(database, 'tables'))),
     getSiteAssets: async (): Promise<any> => (await get(ref(database, 'site_configuration'))).val(),
+    getTimeEntries: async (): Promise<TimeEntry[]> => snapshotToArray(await get(ref(database, 'time_entries'))),
 
     // --- Site Editor ---
     updateSiteAsset: async (assetKey: string, data: File | string): Promise<void> => {
@@ -73,7 +154,10 @@ export const api = {
         if (!table || !table.commandeId) return null;
         return api.getCommandeById(table.commandeId);
     },
-    getCommandeById: async (commandeId: string): Promise<Commande | null> => snapshotToObject(await get(ref(database, `commands/${commandeId}`))),
+    getCommandeById: async (commandeId: string): Promise<Commande | null> => {
+        const snapshot = await get(ref(database, `commands/${commandeId}`));
+        return normalizeCommandeRecord(snapshotToObject(snapshot));
+    },
     createCommande: async (tableId: number, couverts: number): Promise<Commande> => {
         const newCommandeRef = push(ref(database, 'commands'));
         const newCommande: Commande = {
@@ -115,14 +199,82 @@ export const api = {
         return api.getCommandeById(commandeId);
     },
     getKitchenOrders: async (): Promise<Commande[]> => {
-        const allCommands = snapshotToArray(await get(ref(database, 'commands')));
+        const allCommands = await fetchAllCommandes();
         return allCommands.filter(c => c.estado_cocina && c.estado_cocina !== 'servido');
     },
     markOrderAsReady: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { estado_cocina: 'listo', date_listo_cuisine: new Date().toISOString() }),
     acknowledgeOrderReady: (commandeId: string): Promise<void> => update(ref(database, `commands/${commandeId}`), { estado_cocina: 'servido', date_servido: new Date().toISOString() }),
 
-    // --- POS - Takeaway (Simplified for Firebase) ---
-    // Assuming logic for takeaway is similar to table orders but without a table_id
+    // --- POS - Takeaway ---
+    getReadyTakeawayOrders: async (): Promise<Commande[]> => {
+        const commandes = await fetchAllCommandes();
+        return commandes.filter(cmd =>
+            Number(cmd.table_id) === TAKEAWAY_TABLE_ID &&
+            cmd.statut === 'en_cours' &&
+            cmd.estado_cocina === 'listo'
+        );
+    },
+    getPendingTakeawayOrders: async (): Promise<Commande[]> => {
+        const commandes = await fetchAllCommandes();
+        return commandes.filter(cmd =>
+            Number(cmd.table_id) === TAKEAWAY_TABLE_ID &&
+            cmd.statut === 'pendiente_validacion'
+        );
+    },
+    getActiveCommandes: async (): Promise<Commande[]> => {
+        const commandes = await fetchAllCommandes();
+        return commandes.filter(cmd => cmd.statut === 'en_cours' || cmd.statut === 'pendiente_validacion');
+    },
+    submitTakeawayOrderForValidation: async (
+        items: CommandeItem[],
+        customerInfo: { fullName: string, address: string, paymentMethod: string, receipt: File }
+    ): Promise<Commande> => {
+        const newCommandeRef = push(ref(database, 'commands'));
+        const commandeId = newCommandeRef.key;
+        if (!commandeId) {
+            throw new Error('Impossible de créer la commande.');
+        }
+
+        let receiptUrl: string | undefined;
+        if (customerInfo.receipt) {
+            receiptUrl = await uploadFileAndGetURL(`takeaway_receipts/${commandeId}`, customerInfo.receipt);
+        }
+
+        const sanitizedItems = items.map(item => ({
+            ...item,
+            produit: { ...item.produit },
+        }));
+        const itemsCount = sanitizedItems.reduce((sum, item) => sum + (item.quantite || 0), 0);
+        const nowIso = new Date().toISOString();
+
+        const newCommandeData: Commande = {
+            id: commandeId,
+            table_id: TAKEAWAY_TABLE_ID,
+            items: sanitizedItems,
+            statut: 'pendiente_validacion',
+            date_creation: nowIso,
+            couverts: itemsCount > 0 ? itemsCount : 1,
+            estado_cocina: null,
+            payment_status: 'impaye',
+            customer_name: customerInfo.fullName,
+            customer_address: customerInfo.address,
+            payment_method: customerInfo.paymentMethod,
+            ...(receiptUrl ? { receipt_image_base64: receiptUrl } : {}),
+        };
+
+        await set(newCommandeRef, newCommandeData);
+
+        return normalizeCommandeRecord(newCommandeData)!;
+    },
+    validateAndSendTakeawayOrder: async (commandeId: string): Promise<void> => {
+        const nowIso = new Date().toISOString();
+        await update(ref(database, `commands/${commandeId}`), {
+            statut: 'en_cours',
+            estado_cocina: 'recibido',
+            date_envoi_cuisine: nowIso,
+            date_dernier_envoi_cuisine: nowIso,
+        });
+    },
 
     // --- Management - Ingredients ---
     recordAchat: (ingredient_id: number, quantite_achetee: number, prix_total: number): Promise<Achat> => {
@@ -141,15 +293,30 @@ export const api = {
     
     // --- Management - Products ---
     updateRecette: (produit_id: number, newItems: RecetteItem[]): Promise<Recette> => set(ref(database, `recettes/${produit_id}`), { items: newItems }).then(() => ({ produit_id, items: newItems })),
-    addProduct: async (payload: ProduitPayload, items: RecetteItem[]): Promise<Produit> => {
+    addProduct: async (payload: ProduitPayload, items: RecetteItem[], imageFile?: File): Promise<Produit> => {
         const newProductRef = push(ref(database, 'products'));
         const productData = { ...payload, estado: 'disponible' };
         await set(newProductRef, productData);
         await api.updateRecette(newProductRef.key as any, items);
-        return { id: newProductRef.key!, ...productData };
+        let imageUrl: string | undefined;
+        if (imageFile) {
+            imageUrl = await uploadFileAndGetURL(`product_images/${newProductRef.key}`, imageFile);
+            await update(newProductRef, { image_base64: imageUrl });
+        }
+        return { id: newProductRef.key!, ...productData, ...(imageUrl ? { image_base64: imageUrl } : {}) };
     },
     updateProduct: (id: number, payload: ProduitPayload): Promise<Produit> => {
         return update(ref(database, `products/${id}`), payload).then(() => api.getProduits().then(prods => prods.find(p => p.id === id)!));
+    },
+    updateProductImage: async (productId: number, imageFile: File | null): Promise<void> => {
+        const productRef = ref(database, `products/${productId}`);
+        if (imageFile) {
+            const imageUrl = await uploadFileAndGetURL(`product_images/${productId}`, imageFile);
+            await update(productRef, { image_base64: imageUrl });
+        } else {
+            await update(productRef, { image_base64: null });
+            await safeDeleteStorageObject(`product_images/${productId}`);
+        }
     },
     updateProductStatus: (productId: number, status: Produit['estado']): Promise<Produit> => {
         return update(ref(database, `products/${productId}`), { estado: status }).then(() => api.getProduits().then(prods => prods.find(p => p.id === productId)!));
