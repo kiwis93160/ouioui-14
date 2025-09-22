@@ -23,7 +23,9 @@ export interface Ingredient {
     last_known_price?: number;
 }
 
-export type IngredientPayload = Pick<Ingredient, 'nom' | 'unite' | 'stock_minimum'>;
+export type IngredientPayload =
+    Pick<Ingredient, 'nom' | 'unite' | 'stock_minimum'> &
+    Partial<Pick<Ingredient, 'stock_actuel' | 'prix_unitaire' | 'lots' | 'date_below_minimum' | 'last_known_price'>>;
 
 export interface Categoria {
     id: number;
