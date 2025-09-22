@@ -373,9 +373,40 @@ export const api = {
         const achatData = { ingredient_id, quantite_achetee, prix_total, date_achat: new Date().toISOString() };
         return set(newAchatRef, achatData).then(() => ({ id: newAchatRef.key!, ...achatData }));
     },
-    addIngredient: (payload: IngredientPayload): Promise<Ingredient> => {
+    addIngredient: async (payload: IngredientPayload): Promise<Ingredient> => {
         const newIngredientRef = push(ref(database, 'ingredients'));
-        return set(newIngredientRef, payload).then(() => ({ id: newIngredientRef.key!, ...payload, stock_actuel: 0, lots: [] }));
+        if (!newIngredientRef.key) {
+            throw new Error('Impossible de créer l\'ingrédient.');
+        }
+
+        const {
+            stock_actuel,
+            prix_unitaire,
+            lots,
+            date_below_minimum,
+            last_known_price,
+            ...baseFields
+        } = payload;
+
+        const optionalMetadata: Partial<Pick<Ingredient, 'date_below_minimum' | 'last_known_price'>> = {};
+        if (date_below_minimum !== undefined) {
+            optionalMetadata.date_below_minimum = date_below_minimum;
+        }
+        if (last_known_price !== undefined) {
+            optionalMetadata.last_known_price = last_known_price;
+        }
+
+        const ingredientRecord: Omit<Ingredient, 'id'> = {
+            ...baseFields,
+            stock_actuel: stock_actuel ?? 0,
+            prix_unitaire: prix_unitaire ?? 0,
+            lots: lots ? [...lots] : [],
+            ...optionalMetadata,
+        };
+
+        await set(newIngredientRef, ingredientRecord);
+
+        return { id: newIngredientRef.key!, ...ingredientRecord };
     },
     updateIngredient: (id: number, payload: IngredientPayload): Promise<Ingredient> => {
         return update(ref(database, `ingredients/${id}`), payload).then(() => api.getIngredients().then(ings => ings.find(i => i.id === id)!));
