@@ -110,20 +110,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const fetchMenuData = useCallback(async () => {
         setLoading(true);
         setError(null);
+        setVentes([]);
+        setAchats([]);
+        setTables([]);
+        setKitchenOrders([]);
+        setReadyTakeawayOrders([]);
+        setPendingTakeawayOrders([]);
+        setActiveCommandes([]);
+        setRoles([]);
+        setProductLowStockInfo(new Map<string, string[]>());
+        setIngredients([]);
+        setProduits([]);
+        setRecettes([]);
+        setCategorias([]);
+        setSiteAssets(defaultImageAssets);
+
         try {
-            const [ingData, prodData, recData, catData, assetsData] = await Promise.all([
-                api.getIngredients(),
-                api.getProduits(),
-                api.getRecettes(),
-                api.getCategories(),
-                api.getSiteAssets(),
-            ]);
+            const { produits: prodData, categorias: catData, recettes: recData, ingredients: ingData, siteAssets } = await api.getPublicMenuData();
+
             setIngredients(ingData);
             setProduits(prodData);
             setRecettes(recData);
             setCategorias(catData);
-            setSiteAssets(assetsData);
+
+            const mergedAssets: SiteAssets = siteAssets && Object.keys(siteAssets).length > 0
+                ? { ...defaultImageAssets, ...(siteAssets as Partial<SiteAssets>) }
+                : defaultImageAssets;
+            setSiteAssets(mergedAssets);
         } catch (err) {
+            setIngredients([]);
+            setProduits([]);
+            setRecettes([]);
+            setCategorias([]);
+            setSiteAssets(defaultImageAssets);
             setError(err as Error);
         } finally {
             setLoading(false);

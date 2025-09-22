@@ -290,6 +290,124 @@ const safeDeleteStorageObject = async (path: string): Promise<void> => withDatab
     }
 });
 
+type PublicMenuRaw = {
+    products?: Record<string, unknown>;
+    categories?: Record<string, unknown>;
+    recettes?: Record<string, unknown>;
+    ingredients?: Record<string, unknown>;
+    site_assets?: Record<string, unknown>;
+};
+
+const buildPublicMenuCategory = (id: EntityId, record: unknown): Categoria | null => {
+    if (!record || typeof record !== 'object') {
+        return null;
+    }
+
+    const nomCandidate = (record as { nom?: unknown }).nom;
+    const nom = typeof nomCandidate === 'string' && nomCandidate.trim() !== ''
+        ? nomCandidate.trim()
+        : null;
+
+    if (!nom) {
+        return null;
+    }
+
+    return { id, nom };
+};
+
+const buildPublicMenuProduct = (id: EntityId, record: unknown): Produit | null => {
+    if (!record || typeof record !== 'object') {
+        return null;
+    }
+
+    const raw = record as {
+        nom_produit?: unknown;
+        prix_vente?: unknown;
+        categoria_id?: unknown;
+        estado?: unknown;
+        image_base64?: unknown;
+    };
+
+    const nomCandidate = raw.nom_produit;
+    const nom_produit = typeof nomCandidate === 'string' && nomCandidate.trim() !== ''
+        ? nomCandidate.trim()
+        : null;
+
+    if (!nom_produit) {
+        return null;
+    }
+
+    const prix = parseNumericValue(raw.prix_vente);
+    const categoria_idCandidate = raw.categoria_id;
+    const categoria_id = categoria_idCandidate !== undefined && categoria_idCandidate !== null
+        ? String(categoria_idCandidate)
+        : '';
+
+    const estadoCandidate = raw.estado;
+    const estado = typeof estadoCandidate === 'string' && estadoCandidate.trim() !== ''
+        ? estadoCandidate.trim()
+        : 'disponible';
+
+    const product: Produit = {
+        id,
+        nom_produit,
+        prix_vente: Number.isNaN(prix) ? 0 : prix,
+        categoria_id,
+        estado,
+    };
+
+    if (typeof raw.image_base64 === 'string' && raw.image_base64.trim() !== '') {
+        product.image_base64 = raw.image_base64;
+    }
+
+    return product;
+};
+
+const buildPublicMenuRecette = (id: EntityId, record: unknown): Recette | null => {
+    if (!record || typeof record !== 'object') {
+        return null;
+    }
+
+    const raw = record as { items?: unknown };
+    const items = normalizeRecetteItems(raw.items);
+
+    return {
+        produit_id: id,
+        items: items.map(item => ({ ...item, qte_utilisee: 0 })),
+    };
+};
+
+const buildPublicMenuIngredient = (id: EntityId, record: unknown): Ingredient | null => {
+    if (!record || typeof record !== 'object') {
+        return null;
+    }
+
+    const raw = record as { nom?: unknown; unite?: unknown };
+    const nomCandidate = raw.nom;
+    const nom = typeof nomCandidate === 'string' && nomCandidate.trim() !== ''
+        ? nomCandidate.trim()
+        : null;
+
+    if (!nom) {
+        return null;
+    }
+
+    const uniteCandidate = raw.unite;
+    const unite = typeof uniteCandidate === 'string' && uniteCandidate.trim() !== ''
+        ? uniteCandidate.trim() as Ingredient['unite']
+        : 'unidad';
+
+    return {
+        id,
+        nom,
+        unite,
+        stock_minimum: 0,
+        stock_actuel: 0,
+        prix_unitaire: 0,
+        lots: [],
+    };
+};
+
 export const api = {
     // --- Core Data Getters ---
     getIngredients: async (): Promise<Ingredient[]> => withDatabaseAuth(async () =>
@@ -361,6 +479,62 @@ export const api = {
         async () => (await get(ref(database, 'site_configuration'))).val(),
         { requireRole: false, ensureAuth: false },
     ),
+    getPublicMenuData: async (): Promise<{
+        produits: Produit[];
+        categorias: Categoria[];
+        recettes: Recette[];
+        ingredients: Ingredient[];
+        siteAssets: Record<string, unknown>;
+    }> => withDatabaseAuth(async () => {
+        const snapshot = await get(ref(database, 'public_menu'));
+        if (!snapshot.exists()) {
+            return {
+                produits: [],
+                categorias: [],
+                recettes: [],
+                ingredients: [],
+                siteAssets: {},
+            };
+        }
+
+        const raw = snapshot.val() as PublicMenuRaw;
+
+        const produits = raw.products
+            ? Object.entries(raw.products)
+                .map(([id, value]) => buildPublicMenuProduct(id, value))
+                .filter((value): value is Produit => value !== null)
+            : [];
+
+        const categorias = raw.categories
+            ? Object.entries(raw.categories)
+                .map(([id, value]) => buildPublicMenuCategory(id, value))
+                .filter((value): value is Categoria => value !== null)
+            : [];
+
+        const recettes = raw.recettes
+            ? Object.entries(raw.recettes)
+                .map(([id, value]) => buildPublicMenuRecette(id, value))
+                .filter((value): value is Recette => value !== null)
+            : [];
+
+        const ingredients = raw.ingredients
+            ? Object.entries(raw.ingredients)
+                .map(([id, value]) => buildPublicMenuIngredient(id, value))
+                .filter((value): value is Ingredient => value !== null)
+            : [];
+
+        const siteAssets = raw.site_assets && typeof raw.site_assets === 'object'
+            ? { ...raw.site_assets }
+            : {};
+
+        return {
+            produits,
+            categorias,
+            recettes,
+            ingredients,
+            siteAssets,
+        };
+    }, { requireRole: false, ensureAuth: false }),
     getTimeEntries: async (): Promise<TimeEntry[]> => withDatabaseAuth(async () =>
         snapshotToArray(await get(ref(database, 'time_entries')))
     ),

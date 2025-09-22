@@ -49,6 +49,10 @@
     "time_entries": {
       ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.reports == 'editor' || auth.token.permissions.reports == 'readonly')",
       ".write": false
+    },
+    "public_menu": {
+      ".read": true,
+      ".write": false
     }
   }
 }

@@ -97,5 +97,39 @@
       "totalSales": 1500,
       "customerCount": 50
     }
+  },
+  "public_menu": {
+    "categories": {
+      "category_id_1": {
+        "nom": "Pizzas"
+      }
+    },
+    "products": {
+      "product_id_1": {
+        "nom_produit": "Pizza Margherita",
+        "prix_vente": 12.5,
+        "categoria_id": "category_id_1",
+        "estado": "disponible"
+      }
+    },
+    "recettes": {
+      "product_id_1": {
+        "produit_id": "product_id_1",
+        "items": [
+          { "ingredient_id": "ingredient_id_1", "qte_utilisee": 0 }
+        ]
+      }
+    },
+    "ingredients": {
+      "ingredient_id_1": {
+        "nom": "Tomate",
+        "unite": "kg"
+      }
+    },
+    "site_assets": {
+      "restaurant_name": "My Restaurant",
+      "theme": "dark"
+    },
+    "updatedAt": 1715875200000
   }
 }
