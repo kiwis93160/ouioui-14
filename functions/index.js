@@ -3,7 +3,25 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
-const ALLOWED_ORIGINS = ['*'];
+const ALLOWED_ORIGINS = [
+  'https://admin.ouiouitacos.com',
+  'https://ouiouitacos-admin.netlify.app',
+  'https://main--ouiouitacos-admin.netlify.app',
+];
+
+const resolveOriginFromHeader = (originHeader) => {
+  if (Array.isArray(originHeader)) {
+    return originHeader[0];
+  }
+  return typeof originHeader === 'string' ? originHeader : '';
+};
+
+const isOriginAllowed = (origin) => ALLOWED_ORIGINS.includes(origin);
+
+const applyCorsHeaders = (res, origin) => {
+  res.set('Access-Control-Allow-Origin', origin);
+  res.set('Vary', 'Origin');
+};
 
 const ORDER_PERMISSION_KEYS = ['orders', '/ventes', '/commande/:tableId', 'tables'];
 
@@ -48,21 +66,35 @@ const buildPermissionClaims = (rawPermissions) => {
 };
 
 exports.verifyPinAndIssueToken = functions.region('us-central1').https.onRequest(async (req, res) => {
+  const origin = resolveOriginFromHeader(req.headers.origin);
+  const isAllowedOrigin = isOriginAllowed(origin);
+
   if (req.method === 'OPTIONS') {
-    res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
+    if (!isAllowedOrigin) {
+      res.status(403).json({ error: 'origin-not-allowed' });
+      return;
+    }
+
+    applyCorsHeaders(res, origin);
     res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.set('Access-Control-Allow-Headers', 'Content-Type');
     res.status(204).send('');
     return;
   }
 
+  if (!isAllowedOrigin) {
+    res.status(403).json({ error: 'origin-not-allowed' });
+    return;
+  }
+
   if (req.method !== 'POST') {
+    applyCorsHeaders(res, origin);
     res.set('Allow', 'POST, OPTIONS');
     res.status(405).json({ error: 'method-not-allowed' });
     return;
   }
 
-  res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
+  applyCorsHeaders(res, origin);
 
   const pin = req.body && typeof req.body.pin === 'string' ? req.body.pin.trim() : '';
   if (!pin) {
