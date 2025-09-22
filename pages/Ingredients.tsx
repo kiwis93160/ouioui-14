@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import Card from '../components/ui/Card';
 import { PackagePlus, Loader2, List, PlusCircle, Trash2, Edit } from 'lucide-react';
-import type { Ingredient, IngredientPayload, Unite } from '../types';
+import type { EntityId, Ingredient, IngredientPayload, Unite } from '../types';
 import { Unite as UniteEnum } from '../types';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
@@ -10,7 +10,7 @@ const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'cu
 const ReapprovisionnementModal: React.FC<{
     ingredient: Ingredient,
     onClose: () => void,
-    onAchat: (ingredientId: number, quantite: number, prix: number) => Promise<void>
+    onAchat: (ingredientId: EntityId, quantite: number, prix: number) => Promise<void>
 }> = ({ ingredient, onClose, onAchat }) => {
     const [quantite, setQuantite] = useState(0);
     const [prix, setPrix] = useState(0);
@@ -102,7 +102,7 @@ const IngredientDetailsModal: React.FC<{
 const IngredientModal: React.FC<{
     ingredient: Ingredient | null;
     onClose: () => void;
-    onSave: (payload: IngredientPayload, id?: number) => Promise<void>;
+    onSave: (payload: IngredientPayload, id?: EntityId) => Promise<void>;
 }> = ({ ingredient, onClose, onSave }) => {
     const [nom, setNom] = useState('');
     const [unite, setUnite] = useState<Unite>(UniteEnum.KG);
@@ -190,15 +190,15 @@ const Ingredients: React.FC = () => {
         setIsEditModalOpen(true);
     };
 
-    const handleSaveIngredient = async (payload: IngredientPayload, id?: number) => {
-        if (id) {
+    const handleSaveIngredient = async (payload: IngredientPayload, id?: EntityId) => {
+        if (id !== undefined) {
             await updateIngredient(id, payload);
         } else {
             await addIngredient(payload);
         }
     };
 
-    const handleDeleteIngredient = async (id: number, name: string) => {
+    const handleDeleteIngredient = async (id: EntityId, name: string) => {
         if (window.confirm(`¿Está seguro de que desea eliminar el ingrediente "${name}"?`)) {
             try {
                 await deleteIngredient(id);
