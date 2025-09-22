@@ -1,10 +1,14 @@
-import { Ingredient, Produit, Recette, Vente, Achat, Unite, Table, Commande, Categoria, Role, PermissionLevel, TablePayload, TimeEntry } from '../types';
+import { Ingredient, Produit, Recette, Vente, Achat, Unite, Table, Commande, Categoria, Role, PermissionLevel, TablePayload, TimeEntry, EntityId } from '../types';
 import { defaultImageAssets } from '../components/ImageAssets';
 
 type IngredientDB = Omit<Ingredient, 'stock_actuel' | 'prix_unitaire'>;
+type IngredientSeed = Omit<IngredientDB, 'id'> & { id: number };
+type CategoriaSeed = Omit<Categoria, 'id'> & { id: number };
+type ProduitSeed = Omit<Produit, 'id' | 'categoria_id'> & { id: number; categoria_id: number };
+type RecetteSeed = { produit_id: number; items: Array<{ ingredient_id: number; qte_utilisee: number }> };
 
 // --- INGRÉDIENTS ENRICHIS ---
-let ingredients: IngredientDB[] = [
+const ingredientSeeds: IngredientSeed[] = [
     // Pizzeria
     { id: 1, nom: "Tomate", unite: Unite.KG, stock_minimum: 5, lots: [{ quantite_initiale: 20, quantite_restante: 18, prix_unitaire_achat: 11250, date_achat: "2023-10-25T10:00:00Z" }] },
     { id: 2, nom: "Mozzarella", unite: Unite.KG, stock_minimum: 2, lots: [{ quantite_initiale: 10, quantite_restante: 8, prix_unitaire_achat: 45000, date_achat: "2023-10-25T10:00:00Z" }] },
@@ -53,15 +57,19 @@ let ingredients: IngredientDB[] = [
     { id: 39, nom: "Helado de Vainilla", unite: Unite.L, stock_minimum: 1, lots: [{ quantite_initiale: 5, quantite_restante: 4, prix_unitaire_achat: 25000, date_achat: "2023-10-23T10:00:00Z" }] }
 ];
 
+let ingredients: IngredientDB[] = ingredientSeeds.map(({ id, ...rest }) => ({ ...rest, id: String(id) }));
+
 // --- CATÉGORIES ET PRODUITS ÉLARGIS ---
-let categorias: Categoria[] = [
+const categoriaSeeds: CategoriaSeed[] = [
     { id: 2, nom: "Entradas" },
     { id: 1, nom: "Platos Principales" },
     { id: 3, nom: "Postres" },
     { id: 4, nom: "Bebidas" }
 ];
 
-let produits: Produit[] = [
+let categorias: Categoria[] = categoriaSeeds.map(({ id, ...rest }) => ({ ...rest, id: String(id) }));
+
+const produitSeeds: ProduitSeed[] = [
     // Entradas
     { id: 1, nom_produit: "Bruschetta de Tomate", prix_vente: 18000, estado: 'disponible', categoria_id: 2 },
     { id: 10, nom_produit: "Papas Cheddar y Tocineta", prix_vente: 25000, estado: 'disponible', categoria_id: 2, image_base64: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAYAAACqaXHeAAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARKSURBVCHhe3drS0tRFMfxt+kH6ENICwVpG/WlAl3YpYvoG7SiCO7cFF1ERFEUq7qQgoqKIIp/oDAqF2I1i845M8/M3Dm5M/fA54U/N2fuzNkz537MOUhISEhISEhISEhISEhISEgQEK3t7W2h3W6Xj8ej1Gq18nK5tEajUf+Y/sD7/f7d3d2ldrs1s9lMFxcX+vj4UK/X+0/mD1in0xkaGhpSgUDg/v5+ub6+Jh6P55/MP2BpaWmR0Wj06elpEokEVigUkMvl0Gq1/jP9AVqtVhIJBJRSqXQPx6NQKNDv918afwYhISEhISEhISEhISEhAQI2Njb29vbUavVyu12a3d3d4VCIUulUtvb27PZbJb7+/s1Go1sNpvVajUWi8VsNptisZharZY8Hk+j0ag4HOYfWC6XsyUIAsFAINBqtVKr1VKr1SKRSJBKpZDL5WCxWCiVSggEAsRiMQaDAY1Gg1AohFarxXQ6xWAwwOfzQSgUQigUgsFgQCQSQSgUglwuh1wuh0AgsDSr+wO/hISEhISEhISEhISEhAQI2J+fny1EIpGbm5sUCoVkMpmkUql4PJ7S6XQ2m00AODg4oNPpJBqNfnp6OsvlslQqlRQKBTg4OKDRaHQ+ny8SiWQqlXJ/f1/u7u6Ew2Fms1kqlUoul4vBYNDf35+lUim1Wk0mk0ksFjM8PJzVajU6nQ4A7O7upmazSbfbxWKxaLfbSbfbhaRSmVQqFcPhkEQiESgUUiYnJzM8PJzFYtHtdtNv9x8sISEhISEhISEhISEhISEhgaX8iQcEBwcHlEql/CgUiu7u7sTjcQoGg/p8PkqlUgKBQN+fPoA0Fm+hYjAYbG9vj8fj0Wg0IhKJhMNhgsHg/f19gsHgcDhUFEUhISEhISEhISEhISEhISEhAQI2h4eHVCqVpFJJrVbL4XAoFArJ5XJJpVJEIpFERUaDAaPRiMFgQCqVQigUQigUQq/XQ6/XQ6/Xw+fzSafTfR4f7w8SEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhISEhIS6j93Dymivm0Q/S9ZAAAAAElFTkSuQmCC' },
@@ -84,7 +92,9 @@ let produits: Produit[] = [
     { id: 18, nom_produit: "Jugo de Piña", prix_vente: 11000, estado: 'disponible', categoria_id: 4 }
 ];
 
-let recettes: Recette[] = [
+let produits: Produit[] = produitSeeds.map(({ id, categoria_id, ...rest }) => ({ ...rest, id: String(id), categoria_id: String(categoria_id) }));
+
+const recetteSeeds: RecetteSeed[] = [
     { produit_id: 1, items: [{ ingredient_id: 14, qte_utilisee: 0.2 }, { ingredient_id: 1, qte_utilisee: 0.1 }, { ingredient_id: 4, qte_utilisee: 0.05 }, { ingredient_id: 5, qte_utilisee: 0.01 }] },
     { produit_id: 2, items: [{ ingredient_id: 3, qte_utilisee: 0.250 }, { ingredient_id: 1, qte_utilisee: 0.150 }, { ingredient_id: 2, qte_utilisee: 0.100 }, { ingredient_id: 4, qte_utilisee: 0.1 }, { ingredient_id: 5, qte_utilisee: 0.02 }] },
     { produit_id: 3, items: [{ ingredient_id: 6, qte_utilisee: 0.180 }, { ingredient_id: 7, qte_utilisee: 1 }, { ingredient_id: 1, qte_utilisee: 0.050 }, { ingredient_id: 8, qte_utilisee: 0.2 }, { ingredient_id: 9, qte_utilisee: 0.150 }, { ingredient_id: 10, qte_utilisee: 0.05 }] },
@@ -107,12 +117,18 @@ let recettes: Recette[] = [
     { produit_id: 18, items: [{ ingredient_id: 36, qte_utilisee: 0.25 }] },
 ];
 
+let recettes: Recette[] = recetteSeeds.map(recette => ({
+    produit_id: String(recette.produit_id),
+    items: recette.items.map(item => ({ ingredient_id: String(item.ingredient_id), qte_utilisee: item.qte_utilisee })),
+}));
+
 let achats: Achat[] = [];
 
 // --- DONNÉES POS ---
 type TableDB = Pick<Table, 'id' | 'nom' | 'capacite'>;
+type TableSeed = Omit<TableDB, 'id'> & { id: number };
 
-let tables: TableDB[] = [
+const tableSeeds: TableSeed[] = [
     { id: 1, nom: "Mesa 1", capacite: 2 },
     { id: 2, nom: "Mesa 2", capacite: 4 },
     { id: 3, nom: "Mesa 3", capacite: 4 },
@@ -124,17 +140,19 @@ let tables: TableDB[] = [
     { id: 99, nom: "Para Llevar", capacite: 1 },
 ];
 
+let tables: TableDB[] = tableSeeds.map(({ id, ...rest }) => ({ ...rest, id: String(id) }));
+
 // --- COMMANDES ACTIVES DE DÉMONSTRATION ---
 const now = new Date();
 
 // AMÉLIORATION : Filtrer les commandes pour s'assurer que tous les produits existent,
 // prévenant ainsi les erreurs si un produit est supprimé de la liste.
 // FIX: The function was expecting a single command object but was being called with an array. The type has been updated to expect an array.
-const robustCommandes = (commandesList: Array<Omit<Commande, 'items'> & { items: Array<Omit<Commande['items'][0], 'produit'> & { produit_id: number }> }>) => {
+const robustCommandes = (commandesList: Array<Omit<Commande, 'items' | 'table_id'> & { table_id: number; items: Array<Omit<Commande['items'][0], 'produit'> & { produit_id: number }> }>) => {
     return commandesList.map(cmd => {
         const validItems = cmd.items
             .map(item => {
-                const produit = produits.find(p => p.id === item.produit_id);
+                const produit = produits.find(p => p.id === String(item.produit_id));
                 if (!produit) {
                     console.warn(`Produit ID ${item.produit_id} introuvable pour la commande ${cmd.id}. L'article sera ignoré.`);
                     return null;
@@ -142,12 +160,12 @@ const robustCommandes = (commandesList: Array<Omit<Commande, 'items'> & { items:
                 return { ...item, produit };
             })
             .filter(Boolean); // Supprimer les articles nuls (produit non trouvé)
-        
-        return { ...cmd, items: validItems as Commande['items'] };
+
+        return { ...cmd, table_id: String(cmd.table_id), items: validItems as Commande['items'] };
     });
 };
 
-let commandes: Commande[] = robustCommandes([
+const commandeSeeds: Array<Omit<Commande, 'items' | 'table_id'> & { table_id: number; items: Array<Omit<Commande['items'][0], 'produit'> & { produit_id: number }> }>> = [
     // Commande servie, table 1
     {
         id: `cmd-${now.getTime() - 1800000}-1`,
@@ -256,7 +274,7 @@ let commandes: Commande[] = robustCommandes([
 let ventes: Vente[] = [];
 const generateMockSales = () => {
     // Calculer le coût de chaque produit une seule fois pour la performance
-    const productCosts = new Map<number, number>();
+    const productCosts = new Map<EntityId, number>();
     produits.forEach(p => {
         const recette = recettes.find(r => r.produit_id === p.id);
         if (recette) {
@@ -308,7 +326,7 @@ const generateMockSales = () => {
                 if (availableProducts.length === 0) continue; // Skip if no products have recipes
 
                 const produit = availableProducts[Math.floor(Math.random() * availableProducts.length)];
-                
+
                 const cout = productCosts.get(produit.id) || 0;
                 const prix = produit.prix_vente;
                 const quantite = Math.floor(Math.random() * 2) + 1;
@@ -393,6 +411,8 @@ let roles: Role[] = [
         }
     }
 ];
+
+let commandes: Commande[] = robustCommandes(commandeSeeds);
 
 // DONNÉES POUR L'ÉDITEUR DE SITE
 let siteAssets = { ...defaultImageAssets };

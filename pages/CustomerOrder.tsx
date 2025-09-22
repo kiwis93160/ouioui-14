@@ -3,25 +3,23 @@ import { useNavigate } from 'react-router-dom';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import { ShoppingCart, ChefHat, Loader2, ArrowLeft, Edit, AlertTriangle, X, UploadCloud, CheckCircle } from 'lucide-react';
 import Card from '../components/ui/Card';
-import type { Produit, CommandeItem, Commande, HistoricCommandeItem } from '../types';
+import type { Produit, CommandeItem, Commande, HistoricCommandeItem, EntityId } from '../types';
 import { customerOrderHistoryService } from '../services/customerOrderHistoryService';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
 
-const TAKEAWAY_TABLE_ID = 99;
-
 const CustomizationModal: React.FC<{
     item: CommandeItem;
     onClose: () => void;
-    onSave: (itemId: string, updates: { excluded_ingredients: number[], commentaire: string }) => void;
+    onSave: (itemId: string, updates: { excluded_ingredients: EntityId[], commentaire: string }) => void;
 }> = ({ item, onClose, onSave }) => {
     const { getRecetteForProduit, getIngredientById } = useRestaurantData();
     const recette = getRecetteForProduit(item.produit.id);
 
-    const [excludedIngredients, setExcludedIngredients] = useState<number[]>(item.excluded_ingredients || []);
+    const [excludedIngredients, setExcludedIngredients] = useState<EntityId[]>(item.excluded_ingredients || []);
     const [comment, setComment] = useState(item.commentaire || '');
 
-    const handleIngredientToggle = (ingredientId: number) => {
+    const handleIngredientToggle = (ingredientId: EntityId) => {
         setExcludedIngredients(prev =>
             prev.includes(ingredientId)
                 ? prev.filter(id => id !== ingredientId)
@@ -254,7 +252,7 @@ const CustomerOrder: React.FC = () => {
     const navigate = useNavigate();
     const [cart, setCart] = useState<CommandeItem[]>([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [activeCategoryId, setActiveCategoryId] = useState<number | 'all'>('all');
+    const [activeCategoryId, setActiveCategoryId] = useState<EntityId | 'all'>('all');
     const [editingItem, setEditingItem] = useState<CommandeItem | null>(null);
     const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
@@ -289,7 +287,7 @@ const CustomerOrder: React.FC = () => {
         setCart(cart.filter(item => item.id !== itemId));
     };
 
-    const handleSaveCustomization = (itemId: string, updates: { excluded_ingredients: number[], commentaire: string }) => {
+    const handleSaveCustomization = (itemId: string, updates: { excluded_ingredients: EntityId[], commentaire: string }) => {
         setCart(cart.map(item => item.id === itemId ? { ...item, ...updates } : item));
         setEditingItem(null);
     };
@@ -297,7 +295,7 @@ const CustomerOrder: React.FC = () => {
     const total = useMemo(() => cart.reduce((sum, item) => sum + (item.produit.prix_vente * item.quantite), 0), [cart]);
 
     const totalQuantityPerProduct = useMemo(() => {
-        const quantities = new Map<number, number>();
+        const quantities = new Map<EntityId, number>();
         cart.forEach(item => {
             quantities.set(item.produit.id, (quantities.get(item.produit.id) || 0) + item.quantite);
         });
@@ -375,7 +373,7 @@ const CustomerOrder: React.FC = () => {
                         {filteredProduits.map(produit => {
                              const quantity = totalQuantityPerProduct.get(produit.id) || 0;
                              const isAgotado = produit.estado !== 'disponible';
-                            const lowStockInfo = productLowStockInfo.get(String(produit.id));
+                            const lowStockInfo = productLowStockInfo.get(produit.id);
                              
                              return (
                                 <button

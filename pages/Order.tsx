@@ -3,22 +3,22 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import Card from '../components/ui/Card';
 import { Plus, X, Loader2, ArrowLeft, Utensils, Users, AlertTriangle, Send, Edit, Minus } from 'lucide-react';
-import type { Produit, Commande, CommandeItem } from '../types';
+import type { Produit, Commande, CommandeItem, EntityId } from '../types';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
 
 const CustomizationModal: React.FC<{
     item: CommandeItem;
     onClose: () => void;
-    onSave: (itemId: string, updates: { excluded_ingredients: number[], commentaire: string }) => void;
+    onSave: (itemId: string, updates: { excluded_ingredients: EntityId[], commentaire: string }) => void;
 }> = ({ item, onClose, onSave }) => {
     const { getRecetteForProduit, getIngredientById } = useRestaurantData();
     const recette = getRecetteForProduit(item.produit.id);
 
-    const [excludedIngredients, setExcludedIngredients] = useState<number[]>(item.excluded_ingredients || []);
+    const [excludedIngredients, setExcludedIngredients] = useState<EntityId[]>(item.excluded_ingredients || []);
     const [comment, setComment] = useState(item.commentaire || '');
 
-    const handleIngredientToggle = (ingredientId: number) => {
+    const handleIngredientToggle = (ingredientId: EntityId) => {
         setExcludedIngredients(prev =>
             prev.includes(ingredientId)
                 ? prev.filter(id => id !== ingredientId)
@@ -100,9 +100,9 @@ const Order: React.FC = () => {
     const [isFetching, setIsFetching] = useState(true);
     const [error, setError] = useState('');
     const [editingItem, setEditingItem] = useState<CommandeItem | null>(null);
-    const [activeCategoryId, setActiveCategoryId] = useState<number | 'all'>('all');
+    const [activeCategoryId, setActiveCategoryId] = useState<EntityId | 'all'>('all');
 
-    const table = useMemo(() => tables.find(t => t.id === Number(tableId)), [tables, tableId]);
+    const table = useMemo(() => tables.find(t => t.id === tableId), [tables, tableId]);
     
     useEffect(() => {
         commandeRef.current = commande;
@@ -111,7 +111,7 @@ const Order: React.FC = () => {
     // Gérer la récupération initiale et les mises à jour des données de la commande
     useEffect(() => {
         if (tableId) {
-            const cmd = getCommandeByTableId(Number(tableId));
+            const cmd = getCommandeByTableId(tableId);
             if (cmd) {
                 setCommande(cmd);
             } else if (!isFetching) {
@@ -138,7 +138,7 @@ const Order: React.FC = () => {
     }, [cancelUnpaidCommande]); // `cancelUnpaidCommande` est stable, donc cet effet ne s'exécute qu'une seule fois
 
     const quantityInOrder = useMemo(() => {
-        const itemMap = new Map<number, number>();
+        const itemMap = new Map<EntityId, number>();
         if (commande) {
             for (const item of commande.items) {
                 const currentQty = itemMap.get(item.produit.id) || 0;
@@ -158,7 +158,7 @@ const Order: React.FC = () => {
                 setError("Error de sincronización.");
                 // Re-fetch from context to get the true state
                 if (tableId) {
-                    const freshCmd = getCommandeByTableId(Number(tableId));
+                    const freshCmd = getCommandeByTableId(tableId);
                     if(freshCmd) setCommande(freshCmd);
                 }
             }
@@ -214,7 +214,7 @@ const Order: React.FC = () => {
         handleUpdateCommande({ items: newItems });
     };
 
-    const handleSaveCustomization = (itemId: string, updates: { excluded_ingredients: number[], commentaire: string }) => {
+    const handleSaveCustomization = (itemId: string, updates: { excluded_ingredients: EntityId[], commentaire: string }) => {
         if (!commande) return;
         handleUpdateCommande({ items: commande.items.map(item => item.id === itemId ? { ...item, ...updates } : item) });
     };
@@ -261,7 +261,7 @@ const Order: React.FC = () => {
     
     const productsToDisplay = useMemo(() => {
         if (activeCategoryId === 'all') {
-            const grouped = new Map<number, Produit[]>();
+            const grouped = new Map<EntityId, Produit[]>();
             produits.forEach(p => {
                 const categoryProducts = grouped.get(p.categoria_id) || [];
                 categoryProducts.push(p);
@@ -312,7 +312,7 @@ const Order: React.FC = () => {
                                     {categoryProduits.map(produit => {
                                         const quantity = quantityInOrder.get(produit.id) || 0;
                                         const isAgotado = produit.estado !== 'disponible';
-                                        const lowStockInfo = productLowStockInfo.get(String(produit.id));
+                                        const lowStockInfo = productLowStockInfo.get(produit.id);
                                         
                                         return (
                                             <button

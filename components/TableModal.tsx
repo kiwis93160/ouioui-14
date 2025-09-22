@@ -27,10 +27,10 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
                 setNom(existingTable.nom);
                 setCapacite(String(existingTable.capacite));
             } else {
-                const tableIds = allTables
-                    .filter(t => t.id < 90) // Excluir las mesas especiales como 'Para Llevar'
-                    .map(t => t.id);
-                const nextId = tableIds.length > 0 ? Math.max(...tableIds) + 1 : 1;
+                const numericIds = allTables
+                    .map(t => Number(t.id))
+                    .filter(n => Number.isFinite(n) && n < 90);
+                const nextId = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
                 setId(String(nextId));
                 setNom(`Mesa ${nextId}`);
                 setCapacite('2');
@@ -42,14 +42,14 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        const numId = parseInt(id, 10);
+        const numId = Number(id);
         const numCapacite = parseInt(capacite, 10);
 
-        if (isNaN(numId) || numId <= 0 || numId >= 90) {
+        if (!Number.isFinite(numId) || numId <= 0 || numId >= 90) {
             setError("El número de mesa debe ser un número positivo menor que 90.");
             return;
         }
-        if (isNew && allTables.some(t => t.id === numId)) {
+        if (isNew && allTables.some(t => String(t.id) === id)) {
             setError("Este número de mesa ya existe.");
             return;
         }
@@ -64,7 +64,7 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
 
         setIsSaving(true);
         try {
-            await onSave({ id: numId, nom: nom.trim(), capacite: numCapacite }, isNew);
+            await onSave({ id: id, nom: nom.trim(), capacite: numCapacite }, isNew);
             onClose();
         } catch (err: any) {
             setError(err.message || "Error al guardar la mesa.");
