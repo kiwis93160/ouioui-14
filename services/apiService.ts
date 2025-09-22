@@ -1,5 +1,5 @@
 
-import { database, storage, ensureFirebaseUser } from './firebaseConfig';
+import { auth, database, storage, ensureFirebaseUser } from './firebaseConfig';
 import { ref, get, set, update, remove, push } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import type {
@@ -30,9 +30,119 @@ const snapshotToObject = (snapshot: any) => {
 
 const TAKEAWAY_TABLE_ID: EntityId = '99';
 
-const withDatabaseAuth = async <T>(operation: () => Promise<T>): Promise<T> => {
-    await ensureFirebaseUser();
-    return operation();
+type DatabaseAuthOptions = {
+    requireRole?: boolean;
+    ensureAuth?: boolean;
+};
+
+class AccessDeniedError extends Error {
+    constructor(message: string = 'access-denied') {
+        super(message);
+        this.name = 'AccessDeniedError';
+    }
+}
+
+const ACCESS_DENIED_MESSAGE = 'Accès refusé. Veuillez vous reconnecter pour continuer.';
+let accessDeniedAlertShown = false;
+
+const getStoredRoleId = (): string | null => {
+    if (typeof window === 'undefined') {
+        return null;
+    }
+
+    try {
+        const roleId = window.sessionStorage.getItem('userRoleId');
+        if (roleId && roleId.trim() !== '') {
+            accessDeniedAlertShown = false;
+            return roleId;
+        }
+    } catch (error) {
+        console.error('Impossible de lire userRoleId depuis la session', error);
+    }
+
+    return null;
+};
+
+const notifyAccessDenied = (): void => {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    if (!accessDeniedAlertShown) {
+        accessDeniedAlertShown = true;
+        window.alert(ACCESS_DENIED_MESSAGE);
+    }
+
+    try {
+        window.sessionStorage.removeItem('userRoleId');
+    } catch (error) {
+        console.error('Impossible de supprimer userRoleId de la session', error);
+    }
+
+    if (window.location.hash !== '#/login') {
+        window.location.hash = '#/login';
+    }
+};
+
+const isPermissionDeniedError = (error: unknown): boolean => {
+    if (!error) {
+        return false;
+    }
+
+    const codeCandidate = (error as { code?: unknown }).code;
+    if (typeof codeCandidate === 'string') {
+        const normalizedCode = codeCandidate.toLowerCase();
+        if (normalizedCode.includes('permission_denied') || normalizedCode.includes('permission-denied')) {
+            return true;
+        }
+    }
+
+    const messageCandidate = (error as { message?: unknown }).message;
+    if (typeof messageCandidate === 'string') {
+        const normalizedMessage = messageCandidate.toLowerCase();
+        if (normalizedMessage.includes('permission denied') || normalizedMessage.includes('permission_denied')) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
+const withDatabaseAuth = async <T>(
+    operation: () => Promise<T>,
+    options: DatabaseAuthOptions = {},
+): Promise<T> => {
+    const { requireRole = true, ensureAuth = requireRole } = options;
+
+    if (requireRole) {
+        const storedRoleId = getStoredRoleId();
+        if (!storedRoleId) {
+            notifyAccessDenied();
+            throw new AccessDeniedError('missing-role');
+        }
+
+        if (ensureAuth) {
+            await ensureFirebaseUser();
+        }
+
+        const currentUser = auth.currentUser;
+        if (!currentUser || currentUser.isAnonymous) {
+            notifyAccessDenied();
+            throw new AccessDeniedError('missing-firebase-user');
+        }
+    } else if (ensureAuth) {
+        await ensureFirebaseUser();
+    }
+
+    try {
+        return await operation();
+    } catch (error) {
+        if (requireRole && isPermissionDeniedError(error)) {
+            notifyAccessDenied();
+            throw new AccessDeniedError((error as Error).message);
+        }
+        throw error;
+    }
 };
 
 const parseNumericValue = (value: unknown): number => {
@@ -247,8 +357,9 @@ export const api = {
     getTables: async (): Promise<Table[]> => withDatabaseAuth(async () =>
         snapshotToArray(await get(ref(database, 'tables')))
     ),
-    getSiteAssets: async (): Promise<any> => withDatabaseAuth(async () =>
-        (await get(ref(database, 'site_configuration'))).val()
+    getSiteAssets: async (): Promise<any> => withDatabaseAuth(
+        async () => (await get(ref(database, 'site_configuration'))).val(),
+        { requireRole: false, ensureAuth: false },
     ),
     getTimeEntries: async (): Promise<TimeEntry[]> => withDatabaseAuth(async () =>
         snapshotToArray(await get(ref(database, 'time_entries')))

@@ -5,6 +5,48 @@ admin.initializeApp();
 
 const ALLOWED_ORIGINS = ['*'];
 
+const ORDER_PERMISSION_KEYS = ['orders', '/ventes', '/commande/:tableId', 'tables'];
+
+const resolvePermissionLevel = (permissionsObject, keys) => {
+  let level = 'none';
+  if (!permissionsObject || typeof permissionsObject !== 'object') {
+    return level;
+  }
+
+  for (const key of keys) {
+    const value = permissionsObject[key];
+    if (value === 'editor') {
+      return 'editor';
+    }
+    if (value === 'readonly' && level === 'none') {
+      level = 'readonly';
+    }
+  }
+
+  return level;
+};
+
+const mergePermissionLevel = (currentLevel, aggregatedLevel) => {
+  if (aggregatedLevel === 'editor') {
+    return 'editor';
+  }
+  if (aggregatedLevel === 'readonly') {
+    return currentLevel === 'editor' ? 'editor' : 'readonly';
+  }
+  return currentLevel || 'none';
+};
+
+const buildPermissionClaims = (rawPermissions) => {
+  const normalizedPermissions = rawPermissions && typeof rawPermissions === 'object'
+    ? { ...rawPermissions }
+    : {};
+
+  const ordersLevel = resolvePermissionLevel(normalizedPermissions, ORDER_PERMISSION_KEYS);
+  normalizedPermissions.orders = mergePermissionLevel(normalizedPermissions.orders, ordersLevel);
+
+  return normalizedPermissions;
+};
+
 exports.verifyPinAndIssueToken = functions.region('us-central1').https.onRequest(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.set('Access-Control-Allow-Origin', ALLOWED_ORIGINS[0]);
@@ -47,9 +89,16 @@ exports.verifyPinAndIssueToken = functions.region('us-central1').https.onRequest
       return;
     }
 
+    const permissions = buildPermissionClaims(matchedRoleData.permissions);
+
+    // Rôles autorisés : tout rôle disposant d'au moins un accès `readonly` ou `editor`
+    // sur `/ventes` ou `/commande/:tableId` (ex. `admin`, `mesero`) recevra le claim
+    // `permissions.orders`. Les rôles dotés d'un accès `editor` obtiennent la capacité
+    // de modifier tables et commandes, tandis qu'un accès `readonly` limite aux lectures.
+
     const customClaims = {
       roleId: matchedRoleId,
-      permissions: matchedRoleData.permissions || {},
+      permissions,
     };
 
     const token = await admin.auth().createCustomToken(`role_${matchedRoleId}`, customClaims);
