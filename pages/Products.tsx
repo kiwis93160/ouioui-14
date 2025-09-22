@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import Card from '../components/ui/Card';
-import type { Produit, Recette, RecetteItem, ProduitPayload } from '../types';
+import type { Produit, Recette, RecetteItem, ProduitPayload, EntityId } from '../types';
 import { Edit, Trash2, PlusCircle, Loader2, AlertTriangle, CheckCircle, XCircle, Clock, Tag, X, Camera, UtensilsCrossed } from 'lucide-react';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
@@ -30,7 +30,7 @@ const CategoryManagerModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
         }
     };
     
-    const handleDeleteCategory = async (id: number, name: string) => {
+    const handleDeleteCategory = async (id: EntityId, name: string) => {
         if (window.confirm(`¿Está seguro de que desea eliminar la categoría "${name}"?`)) {
             try {
                 await deleteCategory(id);
@@ -83,7 +83,7 @@ const CategoryManagerModal: React.FC<{ onClose: () => void }> = ({ onClose }) =>
 const ProductStatusModal: React.FC<{
     produit: ProduitWithCost;
     onClose: () => void;
-    onSave: (productId: number, status: Produit['estado']) => Promise<void>;
+    onSave: (productId: EntityId, status: Produit['estado']) => Promise<void>;
 }> = ({ produit, onClose, onSave }) => {
     const [isSaving, setIsSaving] = useState(false);
     
@@ -130,14 +130,14 @@ const ProductModal: React.FC<{
     recette: Recette | null,
     mode: 'add' | 'edit',
     onClose: () => void,
-    onSave: (payload: ProduitPayload, items: RecetteItem[], imageFile: File | null, deleteImage: boolean, id?: number) => Promise<void>
+    onSave: (payload: ProduitPayload, items: RecetteItem[], imageFile: File | null, deleteImage: boolean, id?: EntityId) => Promise<void>
 }> = ({ produit, recette, mode, onClose, onSave }) => {
     const { ingredients, getIngredientById, categorias } = useRestaurantData();
     const fileInputRef = useRef<HTMLInputElement>(null);
     
     const [nomProduit, setNomProduit] = useState('');
     const [prixVente, setPrixVente] = useState(0);
-    const [categoriaId, setCategoriaId] = useState<number | string>('');
+    const [categoriaId, setCategoriaId] = useState<EntityId | ''>('');
     const [editedItems, setEditedItems] = useState<RecetteItem[]>([]);
     const [imageFile, setImageFile] = useState<File | null>(null);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -171,11 +171,11 @@ const ProductModal: React.FC<{
     }, [nomProduit, categoriaId, prixVente]);
 
 
-    const handleItemChange = (id: number, qty: number) => setEditedItems(items => items.map(i => i.ingredient_id === id ? { ...i, qte_utilisee: Math.max(0, qty) } : i));
-    const handleRemoveItem = (id: number) => setEditedItems(items => items.filter(i => i.ingredient_id !== id));
-    
+    const handleItemChange = (id: EntityId, qty: number) => setEditedItems(items => items.map(i => i.ingredient_id === id ? { ...i, qte_utilisee: Math.max(0, qty) } : i));
+    const handleRemoveItem = (id: EntityId) => setEditedItems(items => items.filter(i => i.ingredient_id !== id));
+
     const handleAddItem = () => {
-        const id = parseInt(newIngredientId, 10);
+        const id = newIngredientId.trim();
         if (id && newIngredientQty > 0 && !editedItems.some(item => item.ingredient_id === id)) {
             setEditedItems(current => [...current, { ingredient_id: id, qte_utilisee: newIngredientQty }]);
             setNewIngredientId('');
@@ -212,7 +212,7 @@ const ProductModal: React.FC<{
             const payload: ProduitPayload = {
                 nom_produit: nomProduit,
                 prix_vente: prixVente,
-                categoria_id: Number(categoriaId),
+                categoria_id: categoriaId as EntityId,
             };
             await onSave(payload, editedItems, imageFile, deleteImage, produit?.id);
             onClose();
@@ -224,7 +224,7 @@ const ProductModal: React.FC<{
     };
     
     const availableIngredients = useMemo(() => {
-        const currentIds = new Set(editedItems.map(item => item.ingredient_id));
+        const currentIds = new Set<EntityId>(editedItems.map(item => item.ingredient_id));
         return ingredients.filter(ing => !currentIds.has(ing.id));
     }, [ingredients, editedItems]);
 
@@ -273,7 +273,7 @@ const ProductModal: React.FC<{
                             </div>
                             <div>
                                 <label className="block text-sm font-medium">Categoría</label>
-                                <select value={categoriaId} onChange={e => setCategoriaId(Number(e.target.value))} className={inputClasses} required>
+                                <select value={categoriaId} onChange={e => setCategoriaId(e.target.value as EntityId)} className={inputClasses} required>
                                     <option value="" disabled>Seleccionar...</option>
                                     {categorias.map(cat => <option key={cat.id} value={cat.id}>{cat.nom}</option>)}
                                 </select>
@@ -386,7 +386,7 @@ const Products: React.FC = () => {
     const handleOpenModal = (mode: 'add' | 'edit', produit: ProduitWithCost | null = null) => setModalState({ isOpen: true, mode, produit });
     const handleCloseModal = () => setModalState({ isOpen: false, mode: 'add', produit: null });
 
-    const handleSave = async (payload: ProduitPayload, items: RecetteItem[], imageFile: File | null, deleteImage: boolean, id?: number) => {
+    const handleSave = async (payload: ProduitPayload, items: RecetteItem[], imageFile: File | null, deleteImage: boolean, id?: EntityId) => {
         let productId = id;
 
         if (modalState.mode === 'edit' && productId) {
@@ -417,7 +417,7 @@ const Products: React.FC = () => {
         }
     };
     
-    const handleSaveStatus = async (productId: number, status: Produit['estado']) => {
+    const handleSaveStatus = async (productId: EntityId, status: Produit['estado']) => {
         await updateProductStatus(productId, status);
         setStatusModalProduct(null);
     };

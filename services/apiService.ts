@@ -2,10 +2,10 @@
 import { database, storage } from './firebaseConfig';
 import { ref, get, set, update, remove, push } from 'firebase/database';
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import type { 
+import type {
     Ingredient, Produit, Recette, Vente, Achat, RecetteItem,
     IngredientPayload, ProduitPayload, Table, Commande, CommandeItem,
-    Categoria, Role, TablePayload, TimeEntry
+    Categoria, Role, TablePayload, TimeEntry, EntityId
 } from '../types';
 
 // --- Helper Functions for Firebase Database ---
@@ -28,7 +28,7 @@ const snapshotToObject = (snapshot: any) => {
     return null;
 }
 
-const TAKEAWAY_TABLE_ID = 99;
+const TAKEAWAY_TABLE_ID: EntityId = '99';
 
 const parseNumericValue = (value: unknown): number => {
     if (typeof value === 'number') {
@@ -43,6 +43,31 @@ const parseNumericValue = (value: unknown): number => {
     return Number.NaN;
 };
 
+const normalizeEntityId = (value: unknown): EntityId | null => {
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed !== '' ? trimmed : null;
+    }
+    if (typeof value === 'number' && !Number.isNaN(value)) {
+        return String(value);
+    }
+    return null;
+};
+
+const normalizeEntityIdArray = (value: unknown): EntityId[] => {
+    if (Array.isArray(value)) {
+        return value
+            .map(normalizeEntityId)
+            .filter((id): id is EntityId => id !== null);
+    }
+    if (value && typeof value === 'object') {
+        return Object.values(value as Record<string, unknown>)
+            .map(normalizeEntityId)
+            .filter((id): id is EntityId => id !== null);
+    }
+    return [];
+};
+
 const normalizeRecetteItems = (rawItems: unknown): RecetteItem[] => {
     const itemsArray = Array.isArray(rawItems)
         ? rawItems
@@ -53,10 +78,10 @@ const normalizeRecetteItems = (rawItems: unknown): RecetteItem[] => {
     return itemsArray
         .map(item => {
             if (!item || typeof item !== 'object') return null;
-            const ingredientId = parseNumericValue((item as { ingredient_id?: unknown }).ingredient_id);
+            const ingredientId = normalizeEntityId((item as { ingredient_id?: unknown }).ingredient_id);
             const quantity = parseNumericValue((item as { qte_utilisee?: unknown }).qte_utilisee);
 
-            if (Number.isNaN(ingredientId)) {
+            if (!ingredientId) {
                 return null;
             }
 
@@ -68,24 +93,16 @@ const normalizeRecetteItems = (rawItems: unknown): RecetteItem[] => {
         .filter((item): item is RecetteItem => item !== null);
 };
 
-const resolveRecetteProduitId = (nodeKey: string, rawRecette: unknown): string | number => {
+const resolveRecetteProduitId = (nodeKey: string, rawRecette: unknown): EntityId => {
     if (rawRecette && typeof rawRecette === 'object' && 'produit_id' in (rawRecette as Record<string, unknown>)) {
         const produitIdValue = (rawRecette as { produit_id?: unknown }).produit_id;
-        const parsed = parseNumericValue(produitIdValue);
-        if (!Number.isNaN(parsed)) {
-            return parsed;
-        }
-        if (typeof produitIdValue === 'string' && produitIdValue.trim() !== '') {
-            return produitIdValue;
+        const normalized = normalizeEntityId(produitIdValue);
+        if (normalized) {
+            return normalized;
         }
     }
 
-    const parsedKey = parseNumericValue(nodeKey);
-    if (!Number.isNaN(parsedKey)) {
-        return parsedKey;
-    }
-
-    return nodeKey;
+    return normalizeEntityId(nodeKey) ?? nodeKey;
 };
 
 const normalizeCommandeRecord = (commandeData: any | null): Commande | null => {
@@ -98,24 +115,29 @@ const normalizeCommandeRecord = (commandeData: any | null): Commande | null => {
             : [];
 
     const normalizedItems = (rawItems.filter(Boolean) as CommandeItem[]).map(item => {
-        if (item?.produit?.id !== undefined) {
-            const parsedId = parseNumericValue(item.produit.id as unknown);
-            if (!Number.isNaN(parsedId)) {
-                return {
-                    ...item,
-                    produit: { ...item.produit, id: parsedId }
-                };
-            }
+        const produitId = item?.produit ? normalizeEntityId((item.produit as { id?: unknown }).id) : null;
+        const quantiteValue = parseNumericValue((item as { quantite?: unknown }).quantite);
+        const excluded = normalizeEntityIdArray((item as { excluded_ingredients?: unknown }).excluded_ingredients);
+
+        const normalizedItem: CommandeItem = {
+            ...item,
+            quantite: Number.isNaN(quantiteValue) ? 0 : quantiteValue,
+            excluded_ingredients: excluded.length > 0 ? excluded : [],
+        };
+
+        if (produitId && item?.produit) {
+            normalizedItem.produit = { ...item.produit, id: produitId };
         }
-        return item;
+
+        return normalizedItem;
     });
 
-    const tableId = parseNumericValue(commandeData.table_id);
+    const tableId = normalizeEntityId(commandeData.table_id);
     const couvertsCandidate = parseNumericValue(commandeData.couverts);
 
     const normalizedCommande: Commande = {
         ...commandeData,
-        table_id: Number.isNaN(tableId) ? Number.NaN : tableId,
+        table_id: tableId ?? '',
         couverts: Number.isNaN(couvertsCandidate)
             ? normalizedItems.reduce((sum, item) => sum + (item.quantite || 0), 0)
             : couvertsCandidate,
@@ -239,7 +261,7 @@ export const api = {
     },
 
     // --- POS - Commande ---
-    getCommandeByTableId: async (tableId: number): Promise<Commande | null> => {
+    getCommandeByTableId: async (tableId: EntityId): Promise<Commande | null> => {
         const tablesSnapshot = await get(ref(database, `tables/${tableId}`));
         const table = tablesSnapshot.val();
         if (!table || !table.commandeId) return null;
@@ -249,11 +271,12 @@ export const api = {
         const snapshot = await get(ref(database, `commands/${commandeId}`));
         return normalizeCommandeRecord(snapshotToObject(snapshot));
     },
-    createCommande: async (tableId: number, couverts: number): Promise<Commande> => {
+    createCommande: async (tableId: EntityId, couverts: number): Promise<Commande> => {
         const newCommandeRef = push(ref(database, 'commands'));
+        const normalizedTableId = String(tableId);
         const newCommande: Commande = {
             id: newCommandeRef.key!,
-            table_id: tableId,
+            table_id: normalizedTableId,
             couverts,
             items: [],
             statut: 'en_cours',
@@ -262,7 +285,7 @@ export const api = {
             estado_cocina: null,
         };
         await set(newCommandeRef, newCommande);
-        await update(ref(database, `tables/${tableId}`), { commandeId: newCommande.id, statut: 'occupee' });
+        await update(ref(database, `tables/${normalizedTableId}`), { commandeId: newCommande.id, statut: 'occupee' });
         return newCommande;
     },
     updateCommande: async (commandeId: string, updates: Partial<Commande>): Promise<Commande> => {
@@ -300,7 +323,7 @@ export const api = {
     getReadyTakeawayOrders: async (): Promise<Commande[]> => {
         const commandes = await fetchAllCommandes();
         return commandes.filter(cmd =>
-            Number(cmd.table_id) === TAKEAWAY_TABLE_ID &&
+            cmd.table_id === TAKEAWAY_TABLE_ID &&
             cmd.statut === 'en_cours' &&
             cmd.estado_cocina === 'listo'
         );
@@ -308,7 +331,7 @@ export const api = {
     getPendingTakeawayOrders: async (): Promise<Commande[]> => {
         const commandes = await fetchAllCommandes();
         return commandes.filter(cmd =>
-            Number(cmd.table_id) === TAKEAWAY_TABLE_ID &&
+            cmd.table_id === TAKEAWAY_TABLE_ID &&
             cmd.statut === 'pendiente_validacion'
         );
     },
@@ -333,7 +356,8 @@ export const api = {
 
         const sanitizedItems = items.map(item => ({
             ...item,
-            produit: { ...item.produit },
+            produit: { ...item.produit, id: String(item.produit.id) },
+            excluded_ingredients: item.excluded_ingredients?.map(id => String(id)) ?? [],
         }));
         const itemsCount = sanitizedItems.reduce((sum, item) => sum + (item.quantite || 0), 0);
         const nowIso = new Date().toISOString();
@@ -368,7 +392,7 @@ export const api = {
     },
 
     // --- Management - Ingredients ---
-    recordAchat: (ingredient_id: number, quantite_achetee: number, prix_total: number): Promise<Achat> => {
+    recordAchat: (ingredient_id: EntityId, quantite_achetee: number, prix_total: number): Promise<Achat> => {
         const newAchatRef = push(ref(database, 'purchases'));
         const achatData = { ingredient_id, quantite_achetee, prix_total, date_achat: new Date().toISOString() };
         return set(newAchatRef, achatData).then(() => ({ id: newAchatRef.key!, ...achatData }));
@@ -408,15 +432,15 @@ export const api = {
 
         return { id: newIngredientRef.key!, ...ingredientRecord };
     },
-    updateIngredient: (id: number, payload: IngredientPayload): Promise<Ingredient> => {
+    updateIngredient: (id: EntityId, payload: IngredientPayload): Promise<Ingredient> => {
         return update(ref(database, `ingredients/${id}`), payload).then(() => api.getIngredients().then(ings => ings.find(i => i.id === id)!));
     },
-    deleteIngredient: (id: number): Promise<void> => remove(ref(database, `ingredients/${id}`)),
-    
+    deleteIngredient: (id: EntityId): Promise<void> => remove(ref(database, `ingredients/${id}`)),
+
     // --- Management - Products ---
-    updateRecette: (produit_id: number | string, newItems: RecetteItem[]): Promise<Recette> => {
+    updateRecette: (produit_id: EntityId, newItems: RecetteItem[]): Promise<Recette> => {
         const sanitizedItems = newItems.map(item => ({
-            ingredient_id: item.ingredient_id,
+            ingredient_id: String(item.ingredient_id),
             qte_utilisee: item.qte_utilisee,
         }));
         const recetteData: Recette = { produit_id, items: sanitizedItems };
@@ -434,10 +458,10 @@ export const api = {
         }
         return { id: newProductRef.key!, ...productData, ...(imageUrl ? { image_base64: imageUrl } : {}) };
     },
-    updateProduct: (id: number, payload: ProduitPayload): Promise<Produit> => {
+    updateProduct: (id: EntityId, payload: ProduitPayload): Promise<Produit> => {
         return update(ref(database, `products/${id}`), payload).then(() => api.getProduits().then(prods => prods.find(p => p.id === id)!));
     },
-    updateProductImage: async (productId: number, imageFile: File | null): Promise<void> => {
+    updateProductImage: async (productId: EntityId, imageFile: File | null): Promise<void> => {
         const productRef = ref(database, `products/${productId}`);
         if (imageFile) {
             const imageUrl = await uploadFileAndGetURL(`product_images/${productId}`, imageFile);
@@ -447,10 +471,10 @@ export const api = {
             await safeDeleteStorageObject(`product_images/${productId}`);
         }
     },
-    updateProductStatus: (productId: number, status: Produit['estado']): Promise<Produit> => {
+    updateProductStatus: (productId: EntityId, status: Produit['estado']): Promise<Produit> => {
         return update(ref(database, `products/${productId}`), { estado: status }).then(() => api.getProduits().then(prods => prods.find(p => p.id === productId)!));
     },
-    deleteProduct: async (id: number): Promise<void> => {
+    deleteProduct: async (id: EntityId): Promise<void> => {
         await remove(ref(database, `products/${id}`));
         await remove(ref(database, `recettes/${id}`));
     },
@@ -460,10 +484,10 @@ export const api = {
         const newCatRef = push(ref(database, 'categories'));
         return set(newCatRef, { nom }).then(() => ({ id: newCatRef.key!, nom }));
     },
-    deleteCategory: (id: number): Promise<void> => remove(ref(database, `categories/${id}`)),
+    deleteCategory: (id: EntityId): Promise<void> => remove(ref(database, `categories/${id}`)),
 
     // --- Management - Tables ---
     addTable: (data: TablePayload): Promise<void> => set(ref(database, `tables/${data.id}`), data),
-    updateTable: (id: number, data: Omit<TablePayload, 'id'>): Promise<void> => update(ref(database, `tables/${id}`), data),
-    deleteTable: (id: number): Promise<void> => remove(ref(database, `tables/${id}`)),
+    updateTable: (id: EntityId, data: Omit<TablePayload, 'id'>): Promise<void> => update(ref(database, `tables/${id}`), data),
+    deleteTable: (id: EntityId): Promise<void> => remove(ref(database, `tables/${id}`)),
 };

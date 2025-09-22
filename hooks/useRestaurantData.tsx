@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect, useContext, useCallback, useMemo } from 'react';
 import { api } from '../services/apiService';
-import type { Ingredient, Produit, Recette, Vente, Achat, RecetteItem, IngredientPayload, ProduitPayload, Table, Commande, CommandeItem, Categoria, UserRole, Role, TablePayload, DailyReportData, TimeEntry } from '../types';
+import type { Ingredient, Produit, Recette, Vente, Achat, RecetteItem, IngredientPayload, ProduitPayload, Table, Commande, CommandeItem, Categoria, UserRole, Role, TablePayload, DailyReportData, TimeEntry, EntityId } from '../types';
 import { defaultImageAssets } from '../components/ImageAssets';
 
 type SiteAssets = typeof defaultImageAssets;
@@ -30,9 +30,9 @@ interface DataContextType {
     saveRoles: (newRoles: Role[]) => Promise<void>;
     authenticateAdmin: (pin: string) => Promise<boolean>;
 
-    getCommandeByTableId: (tableId: number) => Commande | null;
+    getCommandeByTableId: (tableId: EntityId) => Commande | null;
     getCommandeById: (commandeId: string) => Promise<Commande | null>;
-    createCommande: (tableId: number, couverts: number) => Promise<Commande>;
+    createCommande: (tableId: EntityId, couverts: number) => Promise<Commande>;
     updateCommande: (commandeId: string, updates: { items?: CommandeItem[], couverts?: number }) => Promise<void>;
     sendOrderToKitchen: (commandeId: string) => Promise<void>;
     finaliserCommande: (commandeId: string) => Promise<void>;
@@ -50,28 +50,28 @@ interface DataContextType {
     
     generateDailyReportData: () => Promise<DailyReportData>;
 
-    addAchat: (ingredient_id: number, quantite: number, prix: number) => Promise<void>;
-    getProduitCost: (produitId: number | string) => number;
-    getRecetteForProduit: (produitId: number | string) => Recette | undefined;
-    getIngredientById: (id: number) => Ingredient | undefined;
-    getProduitById: (id: number) => Produit | undefined;
-    getCategoriaById: (id: number) => Categoria | undefined;
-    updateRecette: (produitId: number | string, items: RecetteItem[]) => Promise<void>;
+    addAchat: (ingredient_id: EntityId, quantite: number, prix: number) => Promise<void>;
+    getProduitCost: (produitId: EntityId) => number;
+    getRecetteForProduit: (produitId: EntityId) => Recette | undefined;
+    getIngredientById: (id: EntityId) => Ingredient | undefined;
+    getProduitById: (id: EntityId) => Produit | undefined;
+    getCategoriaById: (id: EntityId) => Categoria | undefined;
+    updateRecette: (produitId: EntityId, items: RecetteItem[]) => Promise<void>;
     addIngredient: (payload: IngredientPayload) => Promise<void>;
-    updateIngredient: (id: number, payload: IngredientPayload) => Promise<void>;
-    deleteIngredient: (id: number) => Promise<void>;
+    updateIngredient: (id: EntityId, payload: IngredientPayload) => Promise<void>;
+    deleteIngredient: (id: EntityId) => Promise<void>;
     addProduct: (payload: ProduitPayload, items: RecetteItem[], imageFile?: File) => Promise<Produit>;
-    updateProduct: (id: number, payload: ProduitPayload) => Promise<void>;
-    updateProductImage: (productId: number, imageFile: File | null) => Promise<void>;
-    updateProductStatus: (productId: number, status: Produit['estado']) => Promise<void>;
-    deleteProduct: (id: number) => Promise<void>;
+    updateProduct: (id: EntityId, payload: ProduitPayload) => Promise<void>;
+    updateProductImage: (productId: EntityId, imageFile: File | null) => Promise<void>;
+    updateProductStatus: (productId: EntityId, status: Produit['estado']) => Promise<void>;
+    deleteProduct: (id: EntityId) => Promise<void>;
     addCategory: (nom: string) => Promise<void>;
-    deleteCategory: (id: number) => Promise<void>;
+    deleteCategory: (id: EntityId) => Promise<void>;
     
     updateSiteAsset: (key: keyof SiteAssets, data: File | string) => Promise<void>;
     addTable: (data: TablePayload) => Promise<void>;
-    updateTable: (id: number, data: Omit<TablePayload, 'id'>) => Promise<void>;
-    deleteTable: (id: number) => Promise<void>;
+    updateTable: (id: EntityId, data: Omit<TablePayload, 'id'>) => Promise<void>;
+    deleteTable: (id: EntityId) => Promise<void>;
     refreshData: () => Promise<void>;
 }
 
@@ -197,8 +197,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!ingredients.length || !recettes.length || !produits.length) return;
         const lowStockMap = new Map<string, string[]>();
         for (const produit of produits) {
-            const targetId = String(produit.id);
-            const recette = recettes.find(r => String(r.produit_id) === targetId);
+            const targetId = produit.id;
+            const recette = recettes.find(r => r.produit_id === targetId);
             if (!recette) continue;
             const lowStockIngredientsForProduct: string[] = [];
             for (const item of recette.items) {
@@ -208,7 +208,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
             if (lowStockIngredientsForProduct.length > 0) {
-                lowStockMap.set(String(produit.id), lowStockIngredientsForProduct);
+                lowStockMap.set(produit.id, lowStockIngredientsForProduct);
             }
         }
         setProductLowStockInfo(lowStockMap);
@@ -263,13 +263,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return !!adminRole && pin === adminRole.pin;
     }, [roles]);
 
-    const getCommandeByTableId = useCallback((tableId: number): Commande | null => {
+    const getCommandeByTableId = useCallback((tableId: EntityId): Commande | null => {
         const commande = activeCommandes.find(c => c.table_id === tableId && c.statut === 'en_cours');
         return commande ? { ...commande } : null;
     }, [activeCommandes]);
 
     const getCommandeById = useCallback((commandeId: string) => handleApiCall(() => api.getCommandeById(commandeId), { refresh: false }), [handleApiCall]);
-    const createCommande = useCallback((tableId: number, couverts: number) => handleApiCall(() => api.createCommande(tableId, couverts)) as Promise<Commande>, [handleApiCall]);
+    const createCommande = useCallback((tableId: EntityId, couverts: number) => handleApiCall(() => api.createCommande(tableId, couverts)) as Promise<Commande>, [handleApiCall]);
     const updateCommande = useCallback((id, updates) => handleApiCall(() => api.updateCommande(id, updates)), [handleApiCall]);
     const sendOrderToKitchen = useCallback((id) => handleApiCall(() => api.sendOrderToKitchen(id)), [handleApiCall]);
 
@@ -315,7 +315,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const totalSales = todaysVentes.reduce((sum, v) => sum + v.prix_total_vente, 0);
         const customerCount = new Set(todaysVentes.map(v => v.commande_id)).size;
         
-        const productsSoldMap = new Map<number, number>();
+        const productsSoldMap = new Map<EntityId, number>();
         todaysVentes.forEach(v => {
             productsSoldMap.set(v.produit_id, (productsSoldMap.get(v.produit_id) || 0) + v.quantite);
         });
@@ -364,18 +364,17 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const updateProductStatus = useCallback((id, status) => handleApiCall(() => api.updateProductStatus(id, status)), [handleApiCall]);
     const deleteProduct = useCallback((id) => handleApiCall(() => api.deleteProduct(id)), [handleApiCall]);
     const addCategory = useCallback((nom: string) => handleApiCall(() => api.addCategory(nom)), [handleApiCall]);
-    const deleteCategory = useCallback((id: number) => handleApiCall(() => api.deleteCategory(id)), [handleApiCall]);
+    const deleteCategory = useCallback((id) => handleApiCall(() => api.deleteCategory(id)), [handleApiCall]);
     const updateSiteAsset = useCallback((key: keyof SiteAssets, data: File | string) => handleApiCall(() => api.updateSiteAsset(key as string, data)), [handleApiCall]);
     const addTable = useCallback((data: TablePayload) => handleApiCall(() => api.addTable(data)), [handleApiCall]);
-    const updateTable = useCallback((id: number, data: Omit<TablePayload, 'id'>) => handleApiCall(() => api.updateTable(id, data)), [handleApiCall]);
-    const deleteTable = useCallback((id: number) => handleApiCall(() => api.deleteTable(id)), [handleApiCall]);
+    const updateTable = useCallback((id, data: Omit<TablePayload, 'id'>) => handleApiCall(() => api.updateTable(id, data)), [handleApiCall]);
+    const deleteTable = useCallback((id) => handleApiCall(() => api.deleteTable(id)), [handleApiCall]);
     const submitTakeawayOrderForValidation = useCallback((items: CommandeItem[], customerInfo: { fullName: string, address: string, paymentMethod: string, receipt: File }) => handleApiCall(() => api.submitTakeawayOrderForValidation(items, customerInfo)) as Promise<Commande>, [handleApiCall]);
     const validateAndSendTakeawayOrder = useCallback((id) => handleApiCall(() => api.validateAndSendTakeawayOrder(id)), [handleApiCall]);
 
 
-    const getProduitCost = useCallback((produitId: number | string) => {
-        const targetId = String(produitId);
-        const recette = recettes.find(r => String(r.produit_id) === targetId);
+    const getProduitCost = useCallback((produitId: EntityId) => {
+        const recette = recettes.find(r => r.produit_id === produitId);
         if (!recette) return 0;
         return recette.items.reduce((total, item) => {
             const ing = ingredients.find(i => i.id === item.ingredient_id);
@@ -383,13 +382,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, 0);
     }, [ingredients, recettes]);
 
-    const getRecetteForProduit = useCallback((id: number | string) => {
-        const targetId = String(id);
-        return recettes.find(r => String(r.produit_id) === targetId);
-    }, [recettes]);
-    const getIngredientById = useCallback((id: number) => ingredients.find(i => i.id === id), [ingredients]);
-    const getProduitById = useCallback((id: number) => produits.find(p => p.id === id), [produits]);
-    const getCategoriaById = useCallback((id: number) => categorias.find(c => c.id === id), [categorias]);
+    const getRecetteForProduit = useCallback((id: EntityId) => recettes.find(r => r.produit_id === id), [recettes]);
+    const getIngredientById = useCallback((id: EntityId) => ingredients.find(i => i.id === id), [ingredients]);
+    const getProduitById = useCallback((id: EntityId) => produits.find(p => p.id === id), [produits]);
+    const getCategoriaById = useCallback((id: EntityId) => categorias.find(c => c.id === id), [categorias]);
 
     const value = useMemo(() => ({
         ingredients, produits, recettes, ventes, achats, tables, categorias, loading, error, kitchenOrders, readyTakeawayOrders, pendingTakeawayOrders, productLowStockInfo, siteAssets, activeCommandes,

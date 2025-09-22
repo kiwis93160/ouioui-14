@@ -4,6 +4,8 @@ export enum Unite {
     UNITE = 'unidad'
 }
 
+export type EntityId = string;
+
 export interface IngredientLot {
     quantite_initiale: number;
     quantite_restante: number;
@@ -12,7 +14,7 @@ export interface IngredientLot {
 }
 
 export interface Ingredient {
-    id: number;
+    id: EntityId;
     nom: string;
     unite: Unite;
     stock_minimum: number;
@@ -28,15 +30,15 @@ export type IngredientPayload =
     Partial<Pick<Ingredient, 'stock_actuel' | 'prix_unitaire' | 'lots' | 'date_below_minimum' | 'last_known_price'>>;
 
 export interface Categoria {
-    id: number;
+    id: EntityId;
     nom: string;
 }
 
 export interface Produit {
-    id: number;
+    id: EntityId;
     nom_produit: string;
     prix_vente: number;
-    categoria_id: number;
+    categoria_id: EntityId;
     estado: 'disponible' | 'agotado_temporal' | 'agotado_indefinido';
     image_base64?: string;
 }
@@ -44,19 +46,19 @@ export interface Produit {
 export type ProduitPayload = Pick<Produit, 'nom_produit' | 'prix_vente' | 'categoria_id'>;
 
 export interface RecetteItem {
-    ingredient_id: number;
+    ingredient_id: EntityId;
     qte_utilisee: number;
 }
 
 export interface Recette {
-    produit_id: number | string;
+    produit_id: EntityId;
     items: RecetteItem[];
 }
 
 export interface Vente {
     id: string;
     commande_id: string;
-    produit_id: number;
+    produit_id: EntityId;
     quantite: number;
     date_vente: string;
     cout_total_calcule: number;
@@ -69,7 +71,7 @@ export interface Vente {
 
 export interface Achat {
     id: string;
-    ingredient_id: number;
+    ingredient_id: EntityId;
     quantite_achetee: number;
     prix_total: number;
     date_achat: string;
@@ -78,7 +80,7 @@ export interface Achat {
 export type TableStatus = 'libre' | 'occupee';
 
 export interface Table {
-    id: number;
+    id: EntityId;
     nom: string;
     capacite: number;
     statut: TableStatus;
@@ -105,7 +107,7 @@ export interface CommandeItem {
     quantite: number;
     modificateurs?: Modificateur[];
     commentaire?: string;
-    excluded_ingredients?: number[];
+    excluded_ingredients?: EntityId[];
     estado: 'nuevo' | 'enviado';
     date_envoi?: string;
 }
@@ -115,7 +117,7 @@ export type KitchenOrderStatus = 'recibido' | 'listo' | 'servido';
 
 export interface Commande {
     id: string;
-    table_id: number;
+    table_id: EntityId;
     items: CommandeItem[];
     statut: CommandeStatus;
     date_creation: string;
@@ -151,7 +153,7 @@ export interface HistoricCommandeItem {
     produit: Produit;
     quantite: number;
     commentaire?: string;
-    excluded_ingredients?: number[];
+    excluded_ingredients?: EntityId[];
 }
 
 export interface HistoricCommande {

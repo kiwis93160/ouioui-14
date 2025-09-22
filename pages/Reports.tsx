@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import Card from '../components/ui/Card';
 import { Download, Filter, Clock } from 'lucide-react';
+import type { EntityId } from '../types';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
 
@@ -50,7 +51,7 @@ const Reports: React.FC = () => {
             end.setHours(23, 59, 59, 999);
 
             const isDateInRange = saleDate >= start && saleDate <= end;
-            const isProductMatch = selectedProduitId === 'all' || v.produit_id === Number(selectedProduitId);
+            const isProductMatch = selectedProduitId === 'all' || v.produit_id === selectedProduitId;
             
             return isDateInRange && isProductMatch;
         });
@@ -68,7 +69,7 @@ const Reports: React.FC = () => {
         const commandesMap = new Map<string, {
             date_vente: string;
             table_nom: string;
-            produitsMap: Map<number, number>;
+            produitsMap: Map<EntityId, number>;
             total_vente: number;
             total_benefice: number;
             date_envoi_cuisine?: string;
