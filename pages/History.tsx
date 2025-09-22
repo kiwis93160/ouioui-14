@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useRestaurantData } from '../hooks/useRestaurantData';
 import Card from '../components/ui/Card';
-import type { Vente } from '../types';
+import type { EntityId, Produit, Vente } from '../types';
 import { Eye, X } from 'lucide-react';
 
 const formatCOP = (value: number) => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(value));
@@ -16,10 +16,10 @@ interface CommandeHistorique {
   items: Vente[];
 }
 
-const DetailsModal: React.FC<{ 
-    commande: CommandeHistorique, 
+const DetailsModal: React.FC<{
+    commande: CommandeHistorique,
     onClose: () => void,
-    getProduitById: (id: number) => any
+    getProduitById: (id: EntityId) => Produit | undefined
 }> = ({ commande, onClose, getProduitById }) => {
     return (
         <div className="fixed inset-0 bg-black bg-opacity-60 flex justify-center items-center z-50 p-4">

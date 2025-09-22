@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Card from './ui/Card';
 import { Loader2 } from 'lucide-react';
-import type { Table, TablePayload } from '../types';
+import type { EntityId, Table, TablePayload } from '../types';
 
 interface TableModalProps {
     isOpen: boolean;
@@ -28,7 +28,7 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
                 setCapacite(String(existingTable.capacite));
             } else {
                 const numericIds = allTables
-                    .map(t => Number(t.id))
+                    .map(table => Number.parseInt(String(table.id), 10))
                     .filter(n => Number.isFinite(n) && n < 90);
                 const nextId = numericIds.length > 0 ? Math.max(...numericIds) + 1 : 1;
                 setId(String(nextId));
@@ -42,14 +42,15 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
-        const numId = Number(id);
+        const sanitizedId: EntityId = id.trim();
+        const numId = Number.parseInt(sanitizedId, 10);
         const numCapacite = parseInt(capacite, 10);
 
         if (!Number.isFinite(numId) || numId <= 0 || numId >= 90) {
             setError("El número de mesa debe ser un número positivo menor que 90.");
             return;
         }
-        if (isNew && allTables.some(t => String(t.id) === id)) {
+        if (isNew && allTables.some(t => String(t.id) === sanitizedId)) {
             setError("Este número de mesa ya existe.");
             return;
         }
@@ -64,7 +65,7 @@ const TableModal: React.FC<TableModalProps> = ({ isOpen, onClose, onSave, existi
 
         setIsSaving(true);
         try {
-            await onSave({ id: id, nom: nom.trim(), capacite: numCapacite }, isNew);
+            await onSave({ id: sanitizedId, nom: nom.trim(), capacite: numCapacite }, isNew);
             onClose();
         } catch (err: any) {
             setError(err.message || "Error al guardar la mesa.");
