@@ -454,7 +454,7 @@ const Products: React.FC = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {productsWithCost.map((p) => {
-                    const lowStockInfo = productLowStockInfo.get(p.id);
+                    const lowStockInfo = productLowStockInfo.get(String(p.id));
                     const statusInfo = getStatusInfo(p.estado);
                     const category = getCategoriaById(p.categoria_id);
                     return (

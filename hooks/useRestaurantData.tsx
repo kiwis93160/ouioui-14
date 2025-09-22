@@ -20,7 +20,7 @@ interface DataContextType {
     siteAssets: SiteAssets;
     loading: boolean;
     error: Error | null;
-    productLowStockInfo: Map<number, string[]>;
+    productLowStockInfo: Map<string, string[]>;
     
     userRole: UserRole;
     currentUserRole: Role | null;
@@ -51,12 +51,12 @@ interface DataContextType {
     generateDailyReportData: () => Promise<DailyReportData>;
 
     addAchat: (ingredient_id: number, quantite: number, prix: number) => Promise<void>;
-    getProduitCost: (produitId: number) => number;
-    getRecetteForProduit: (produitId: number) => Recette | undefined;
+    getProduitCost: (produitId: number | string) => number;
+    getRecetteForProduit: (produitId: number | string) => Recette | undefined;
     getIngredientById: (id: number) => Ingredient | undefined;
     getProduitById: (id: number) => Produit | undefined;
     getCategoriaById: (id: number) => Categoria | undefined;
-    updateRecette: (produitId: number, items: RecetteItem[]) => Promise<void>;
+    updateRecette: (produitId: number | string, items: RecetteItem[]) => Promise<void>;
     addIngredient: (payload: IngredientPayload) => Promise<void>;
     updateIngredient: (id: number, payload: IngredientPayload) => Promise<void>;
     deleteIngredient: (id: number) => Promise<void>;
@@ -104,7 +104,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const [userRole, setUserRole] = useState<UserRole>(getSessionRole());
     const [roles, setRoles] = useState<Role[]>([]);
     const [currentUserRole, setCurrentUserRole] = useState<Role | null>(null);
-    const [productLowStockInfo, setProductLowStockInfo] = useState<Map<number, string[]>>(new Map());
+    const [productLowStockInfo, setProductLowStockInfo] = useState<Map<string, string[]>>(new Map());
 
     const fetchMenuData = useCallback(async () => {
         setLoading(true);
@@ -195,9 +195,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         if (!ingredients.length || !recettes.length || !produits.length) return;
-        const lowStockMap = new Map<number, string[]>();
+        const lowStockMap = new Map<string, string[]>();
         for (const produit of produits) {
-            const recette = recettes.find(r => r.produit_id === produit.id);
+            const targetId = String(produit.id);
+            const recette = recettes.find(r => String(r.produit_id) === targetId);
             if (!recette) continue;
             const lowStockIngredientsForProduct: string[] = [];
             for (const item of recette.items) {
@@ -207,7 +208,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
             }
             if (lowStockIngredientsForProduct.length > 0) {
-                lowStockMap.set(produit.id, lowStockIngredientsForProduct);
+                lowStockMap.set(String(produit.id), lowStockIngredientsForProduct);
             }
         }
         setProductLowStockInfo(lowStockMap);
@@ -372,8 +373,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const validateAndSendTakeawayOrder = useCallback((id) => handleApiCall(() => api.validateAndSendTakeawayOrder(id)), [handleApiCall]);
 
 
-    const getProduitCost = useCallback((produitId: number) => {
-        const recette = recettes.find(r => r.produit_id === produitId);
+    const getProduitCost = useCallback((produitId: number | string) => {
+        const targetId = String(produitId);
+        const recette = recettes.find(r => String(r.produit_id) === targetId);
         if (!recette) return 0;
         return recette.items.reduce((total, item) => {
             const ing = ingredients.find(i => i.id === item.ingredient_id);
@@ -381,7 +383,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }, 0);
     }, [ingredients, recettes]);
 
-    const getRecetteForProduit = useCallback((id: number) => recettes.find(r => r.produit_id === id), [recettes]);
+    const getRecetteForProduit = useCallback((id: number | string) => {
+        const targetId = String(id);
+        return recettes.find(r => String(r.produit_id) === targetId);
+    }, [recettes]);
     const getIngredientById = useCallback((id: number) => ingredients.find(i => i.id === id), [ingredients]);
     const getProduitById = useCallback((id: number) => produits.find(p => p.id === id), [produits]);
     const getCategoriaById = useCallback((id: number) => categorias.find(c => c.id === id), [categorias]);

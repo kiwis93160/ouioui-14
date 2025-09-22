@@ -312,7 +312,7 @@ const Order: React.FC = () => {
                                     {categoryProduits.map(produit => {
                                         const quantity = quantityInOrder.get(produit.id) || 0;
                                         const isAgotado = produit.estado !== 'disponible';
-                                        const lowStockInfo = productLowStockInfo.get(produit.id);
+                                        const lowStockInfo = productLowStockInfo.get(String(produit.id));
                                         
                                         return (
                                             <button

@@ -43,6 +43,51 @@ const parseNumericValue = (value: unknown): number => {
     return Number.NaN;
 };
 
+const normalizeRecetteItems = (rawItems: unknown): RecetteItem[] => {
+    const itemsArray = Array.isArray(rawItems)
+        ? rawItems
+        : rawItems && typeof rawItems === 'object'
+            ? Object.values(rawItems as Record<string, unknown>)
+            : [];
+
+    return itemsArray
+        .map(item => {
+            if (!item || typeof item !== 'object') return null;
+            const ingredientId = parseNumericValue((item as { ingredient_id?: unknown }).ingredient_id);
+            const quantity = parseNumericValue((item as { qte_utilisee?: unknown }).qte_utilisee);
+
+            if (Number.isNaN(ingredientId)) {
+                return null;
+            }
+
+            return {
+                ingredient_id: ingredientId,
+                qte_utilisee: Number.isNaN(quantity) ? 0 : quantity,
+            };
+        })
+        .filter((item): item is RecetteItem => item !== null);
+};
+
+const resolveRecetteProduitId = (nodeKey: string, rawRecette: unknown): string | number => {
+    if (rawRecette && typeof rawRecette === 'object' && 'produit_id' in (rawRecette as Record<string, unknown>)) {
+        const produitIdValue = (rawRecette as { produit_id?: unknown }).produit_id;
+        const parsed = parseNumericValue(produitIdValue);
+        if (!Number.isNaN(parsed)) {
+            return parsed;
+        }
+        if (typeof produitIdValue === 'string' && produitIdValue.trim() !== '') {
+            return produitIdValue;
+        }
+    }
+
+    const parsedKey = parseNumericValue(nodeKey);
+    if (!Number.isNaN(parsedKey)) {
+        return parsedKey;
+    }
+
+    return nodeKey;
+};
+
 const normalizeCommandeRecord = (commandeData: any | null): Commande | null => {
     if (!commandeData) return null;
 
@@ -112,7 +157,53 @@ export const api = {
     // --- Core Data Getters ---
     getIngredients: async (): Promise<Ingredient[]> => snapshotToArray(await get(ref(database, 'ingredients'))),
     getProduits: async (): Promise<Produit[]> => snapshotToArray(await get(ref(database, 'products'))),
-    getRecettes: async (): Promise<Recette[]> => snapshotToArray(await get(ref(database, 'recettes'))),
+    getRecettes: async (): Promise<Recette[]> => {
+        const recettesRef = ref(database, 'recettes');
+        const snapshot = await get(recettesRef);
+        if (!snapshot.exists()) {
+            return [];
+        }
+
+        const recettes: Recette[] = [];
+        const updates: Record<string, unknown> = {};
+
+        snapshot.forEach(childSnapshot => {
+            const key = childSnapshot.key;
+            if (!key) {
+                return;
+            }
+
+            const rawRecette = childSnapshot.val();
+            const produitId = resolveRecetteProduitId(key, rawRecette);
+            const normalizedItems = normalizeRecetteItems(rawRecette?.items);
+
+            recettes.push({ produit_id: produitId, items: normalizedItems });
+
+            const baseRecette: Record<string, unknown> =
+                rawRecette && typeof rawRecette === 'object'
+                    ? rawRecette as Record<string, unknown>
+                    : {};
+
+            const currentProduitId = (baseRecette as { produit_id?: unknown }).produit_id;
+            const hasProduitId = currentProduitId !== undefined && currentProduitId !== null;
+            const shouldBackfill = !hasProduitId || currentProduitId !== produitId;
+
+            if (shouldBackfill) {
+                const { items: existingItems, ...rest } = baseRecette as { items?: unknown } & Record<string, unknown>;
+                updates[key] = {
+                    ...rest,
+                    produit_id: produitId,
+                    items: existingItems !== undefined ? existingItems : normalizedItems,
+                };
+            }
+        });
+
+        if (Object.keys(updates).length > 0) {
+            await update(recettesRef, updates);
+        }
+
+        return recettes;
+    },
     getVentes: async (): Promise<Vente[]> => snapshotToArray(await get(ref(database, 'sales'))),
     getAchats: async (): Promise<Achat[]> => snapshotToArray(await get(ref(database, 'purchases'))),
     getCategories: async (): Promise<Categoria[]> => snapshotToArray(await get(ref(database, 'categories'))),
@@ -292,12 +383,19 @@ export const api = {
     deleteIngredient: (id: number): Promise<void> => remove(ref(database, `ingredients/${id}`)),
     
     // --- Management - Products ---
-    updateRecette: (produit_id: number, newItems: RecetteItem[]): Promise<Recette> => set(ref(database, `recettes/${produit_id}`), { items: newItems }).then(() => ({ produit_id, items: newItems })),
+    updateRecette: (produit_id: number | string, newItems: RecetteItem[]): Promise<Recette> => {
+        const sanitizedItems = newItems.map(item => ({
+            ingredient_id: item.ingredient_id,
+            qte_utilisee: item.qte_utilisee,
+        }));
+        const recetteData: Recette = { produit_id, items: sanitizedItems };
+        return set(ref(database, `recettes/${produit_id}`), recetteData).then(() => recetteData);
+    },
     addProduct: async (payload: ProduitPayload, items: RecetteItem[], imageFile?: File): Promise<Produit> => {
         const newProductRef = push(ref(database, 'products'));
         const productData = { ...payload, estado: 'disponible' };
         await set(newProductRef, productData);
-        await api.updateRecette(newProductRef.key as any, items);
+        await api.updateRecette(newProductRef.key!, items);
         let imageUrl: string | undefined;
         if (imageFile) {
             imageUrl = await uploadFileAndGetURL(`product_images/${newProductRef.key}`, imageFile);
