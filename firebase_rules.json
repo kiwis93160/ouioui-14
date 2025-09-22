@@ -1,57 +1,54 @@
-
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "users": {
-      ".read": "auth != null",
-      ".write": "auth != null", // Allows users to sign up
-      "$uid": {
-        ".read": "$uid === auth.uid",
-        ".write": "$uid === auth.uid || root.child('users').child(auth.uid).child('role').val() === 'admin'" // Users can edit their own data, or an admin can
-      }
+      ".read": "auth != null && ($uid === auth.uid || auth.token.roleId === 'admin')",
+      ".write": "auth != null && ($uid === auth.uid || auth.token.roleId === 'admin')"
     },
     "roles": {
-      // Only admins can read or write roles
-      ".read": "root.child('users').child(auth.uid).child('role').val() === 'admin'",
-      ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'"
+      ".read": "auth != null && auth.token.roleId === 'admin'",
+      ".write": "auth != null && auth.token.roleId === 'admin'"
     },
     "tables": {
       ".read": "auth != null",
-      ".write": "auth != null" // Any authenticated user (e.g. waiter) can manage tables
+      ".write": "auth != null"
     },
     "products": {
-      ".read": "auth != null",
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('products').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.products == 'editor' || auth.token.permissions.products == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.products == 'editor'"
     },
     "categories": {
-      ".read": "auth != null",
-       // Tied to product permissions
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('products').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.products == 'editor' || auth.token.permissions.products == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.products == 'editor'"
     },
     "ingredients": {
-      ".read": "auth != null",
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('ingredients').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.ingredients == 'editor' || auth.token.permissions.ingredients == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.ingredients == 'editor'"
     },
     "commands": {
       ".read": "auth != null",
-      ".write": "auth != null" // Any authenticated user (e.g. waiter) can manage commands
+      ".write": "auth != null"
     },
     "sales": {
-      ".read": "auth != null",
-       // Tied to reports permissions
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('reports').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.reports == 'editor' || auth.token.permissions.reports == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.reports == 'editor'"
     },
     "purchases": {
-      ".read": "auth != null",
-      // Tied to ingredients permissions
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('ingredients').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.ingredients == 'editor' || auth.token.permissions.ingredients == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.ingredients == 'editor'"
     },
     "site_configuration": {
       ".read": true,
-      ".write": "root.child('users').child(auth.uid).child('role').val() === 'admin'" // Only admins can change site config
+      ".write": "auth != null && auth.token.roleId === 'admin'"
     },
     "daily_reports": {
-      ".read": "auth != null",
-      ".write": "root.child('roles').child(root.child('users').child(auth.uid).child('role').val()).child('permissions').child('reports').val() === 'editor'"
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.reports == 'editor' || auth.token.permissions.reports == 'readonly')",
+      ".write": "auth != null && auth.token.permissions != null && auth.token.permissions.reports == 'editor'"
+    },
+    "time_entries": {
+      ".read": "auth != null && auth.token.permissions != null && (auth.token.permissions.reports == 'editor' || auth.token.permissions.reports == 'readonly')",
+      ".write": false
     }
   }
 }
