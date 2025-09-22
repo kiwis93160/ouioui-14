@@ -375,7 +375,7 @@ const CustomerOrder: React.FC = () => {
                         {filteredProduits.map(produit => {
                              const quantity = totalQuantityPerProduct.get(produit.id) || 0;
                              const isAgotado = produit.estado !== 'disponible';
-                             const lowStockInfo = productLowStockInfo.get(produit.id);
+                            const lowStockInfo = productLowStockInfo.get(String(produit.id));
                              
                              return (
                                 <button

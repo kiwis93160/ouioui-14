@@ -47,7 +47,7 @@ export interface RecetteItem {
 }
 
 export interface Recette {
-    produit_id: number;
+    produit_id: number | string;
     items: RecetteItem[];
 }
 
