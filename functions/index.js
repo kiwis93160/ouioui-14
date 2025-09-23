@@ -7,6 +7,7 @@ const ALLOWED_ORIGINS = [
   'https://admin.ouiouitacos.com',
   'https://ouiouitacos-admin.netlify.app',
   'https://main--ouiouitacos-admin.netlify.app',
+  'https://posouioui.netlify.app',
 ];
 
 const resolveOriginFromHeader = (originHeader) => {
