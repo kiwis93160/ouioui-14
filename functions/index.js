@@ -127,6 +127,15 @@ exports.verifyPinAndIssueToken = functions.region('us-central1').https.onRequest
         ? matchedRoleData.id.trim()
         : matchedRoleId;
 
+    let sanitizedRoleId = canonicalRoleId;
+    if (!sanitizedRoleId || sanitizedRoleId.length > 123) {
+      console.warn('verifyPinAndIssueToken invalid canonical role id', {
+        matchedRoleId,
+        canonicalRoleId,
+      });
+      sanitizedRoleId = matchedRoleId;
+    }
+
     const permissions = buildPermissionClaims(matchedRoleData.permissions);
 
     // Rôles autorisés : tout rôle disposant d'au moins un accès `readonly` ou `editor`
@@ -135,15 +144,15 @@ exports.verifyPinAndIssueToken = functions.region('us-central1').https.onRequest
     // de modifier tables et commandes, tandis qu'un accès `readonly` limite aux lectures.
 
     const customClaims = {
-      roleId: canonicalRoleId,
+      roleId: sanitizedRoleId,
       permissions,
     };
 
-    const token = await admin.auth().createCustomToken(`role_${canonicalRoleId}`, customClaims);
+    const token = await admin.auth().createCustomToken(`role_${sanitizedRoleId}`, customClaims);
 
     res.json({
       token,
-      role: { ...matchedRoleData, id: canonicalRoleId },
+      role: { ...matchedRoleData, id: sanitizedRoleId },
     });
   } catch (error) {
     console.error('verifyPinAndIssueToken failure', error);
