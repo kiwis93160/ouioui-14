@@ -2,12 +2,17 @@
 
 ## API d'authentification PIN
 
-- La fonction Cloud `verifyPinAndIssueToken` n'accepte que les origines suivantes :
+- La fonction Cloud `verifyPinAndIssueToken` lit la liste des origines autorisées à partir de
+  `functions.config().app.allowed_origins` (ou de la variable d'environnement `ALLOWED_ORIGINS`).
+  Les valeurs peuvent être fournies sous forme de liste séparée par des virgules. À défaut de
+  configuration, la fonction retombe sur les domaines historiques :
   - https://admin.ouiouitacos.com
   - https://ouiouitacos-admin.netlify.app
   - https://main--ouiouitacos-admin.netlify.app
+  - https://posouioui.netlify.app
 - Toute requête (POST ou prévol `OPTIONS`) provenant d'une autre origine reçoit une réponse **403 origin-not-allowed**.
-- Mettre à jour la liste dans `functions/index.js` en cas d'ajout/suppression de domaines frontaux.
+- Mettre à jour la configuration d'environnement (ou les domaines de secours dans
+  `functions/index.js`) lors de l'ajout ou la suppression de fronts.
 
 ## Déploiement Firebase
 

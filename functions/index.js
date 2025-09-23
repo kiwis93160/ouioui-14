@@ -3,12 +3,54 @@ const admin = require('firebase-admin');
 
 admin.initializeApp();
 
-const ALLOWED_ORIGINS = [
+const DEFAULT_ALLOWED_ORIGINS = [
   'https://admin.ouiouitacos.com',
   'https://ouiouitacos-admin.netlify.app',
   'https://main--ouiouitacos-admin.netlify.app',
   'https://posouioui.netlify.app',
 ];
+
+const normalizeOrigins = (rawOrigins) => {
+  if (!rawOrigins) {
+    return [];
+  }
+
+  if (Array.isArray(rawOrigins)) {
+    return rawOrigins
+      .filter((value) => typeof value === 'string')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof rawOrigins === 'string') {
+    return rawOrigins
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+};
+
+const runtimeConfiguredOrigins = (() => {
+  try {
+    const config = functions.config();
+    return normalizeOrigins(config?.app?.allowed_origins);
+  } catch (error) {
+    console.warn('verifyPinAndIssueToken failed to read runtime config origins', error);
+    return [];
+  }
+})();
+
+const envConfiguredOrigins = normalizeOrigins(process.env.ALLOWED_ORIGINS);
+
+const ALLOWED_ORIGINS = (() => {
+  const configuredOrigins = [...runtimeConfiguredOrigins, ...envConfiguredOrigins];
+  if (configuredOrigins.length > 0) {
+    return [...new Set(configuredOrigins)];
+  }
+  return DEFAULT_ALLOWED_ORIGINS;
+})();
 
 const resolveOriginFromHeader = (originHeader) => {
   if (Array.isArray(originHeader)) {
